@@ -54,11 +54,42 @@ class ExtractionService:
     @staticmethod
     def extract_model(title: str, brand: str) -> str:
         text = normalize_text(title)
+        ACCESSORY_KEYWORDS = [
+            "ремешок",
+            "браслет",
+            "strap",
+            "band for",
+            "loop",
+        ]
+
+        if any(keyword in text for keyword in ACCESSORY_KEYWORDS):
+            return ""
 
         if brand != "Unknown":
             text = re.sub(rf"\b{re.escape(brand.lower())}\b", " ", text)
 
         text = cleanup_model_text(text)
+
+        WATCH_PATTERN = r"(watch\s?(?:gt\s?)?\d+[a-z]?\s?(?:pro)?)"
+        BAND_PATTERN = r"(band\s?\d+)"
+        GT_PATTERN = r"(gt\s?\d+[a-z]?)"
+        ULTRA_PATTERN = r"(watch\s?ultra|ultra)"
+        SE_PATTERN = r"(watch\s?se)"
+        SERIES_PATTERN = r"(series\s?\d+)"
+
+        patterns = [
+            WATCH_PATTERN,
+            BAND_PATTERN,
+            GT_PATTERN,
+            ULTRA_PATTERN,
+            SE_PATTERN,
+            SERIES_PATTERN,
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return match.group(1).strip().title()
 
         color_words = {normalize_text(key) for key in COLOR_MAP.keys()}
         tokens = []
@@ -71,4 +102,8 @@ class ExtractionService:
             tokens.append(token)
 
         model = " ".join(tokens).strip()
+
+        if model.isdigit():
+            return ""
+
         return model.title() if model else ""

@@ -8,11 +8,37 @@ GENERIC_MODEL_TOKENS = {
     "series",
 }
 
+DISALLOWED_COMBINATIONS = [
+    ("band", "watch"),
+    ("watch", "band"),
+]
+
+BAD_MODEL_KEYWORDS = [
+    "ремешок",
+    "браслет",
+    "strap",
+    "band for",
+]
+
+
 
 class MatchingService:
     @staticmethod
     def normalize(text: str) -> str:
-        return text.lower().strip()
+        return text.lower().strip().replace(",", "").replace(".", "")
+    
+    @staticmethod
+    def is_invalid_pair(extracted_model: str, vendor_model: str) -> bool:
+        em = extracted_model.lower()
+        vm = vendor_model.lower()
+
+        for a, b in DISALLOWED_COMBINATIONS:
+            if a in em and b in vm:
+                return True
+            if b in em and a in vm:
+                return True
+
+        return False
 
     @staticmethod
     def clean_model(text: str) -> str:
@@ -22,8 +48,11 @@ class MatchingService:
     def match_model(extracted_brand: str, extracted_model: str, vendor_models: list[dict]) -> dict | None:
         if not extracted_model:
             return None
-
+        
         extracted_model_norm = MatchingService.normalize(extracted_model)
+
+        if any(word in extracted_model_norm for word in BAD_MODEL_KEYWORDS):
+            return None
 
         if extracted_brand.lower() == "unknown" and extracted_model_norm in GENERIC_MODEL_TOKENS:
             return None
@@ -39,6 +68,8 @@ class MatchingService:
         # EXACT MATCH
         for model in candidates:
             vendor_model = model.get("model", "")
+            if MatchingService.is_invalid_pair(extracted_model_norm, vendor_model):
+                continue
             if MatchingService.normalize(vendor_model) == extracted_model_norm:
                 return {
                     "model": model.get("model"),
@@ -50,7 +81,8 @@ class MatchingService:
         # CONTAINS MATCH
         for model in candidates:
             vendor_model_norm = MatchingService.normalize(model.get("model", ""))
-
+            if MatchingService.is_invalid_pair(extracted_model_norm, vendor_model_norm):
+                continue
             if extracted_model_norm in vendor_model_norm:
                 return {
                     "model": model.get("model"),
@@ -65,7 +97,8 @@ class MatchingService:
 
         for model in candidates:
             vendor_model = model.get("model", "")
-
+            if MatchingService.is_invalid_pair(extracted_model_norm, vendor_model):
+                continue
             score = fuzz.token_set_ratio(
                 MatchingService.clean_model(extracted_model_norm),
                 MatchingService.clean_model(MatchingService.normalize(vendor_model))
@@ -77,6 +110,9 @@ class MatchingService:
             if score > best_score:
                 best_score = score
                 best_match = model
+
+        if best_match and best_match.get("model", "").lower() == "watch":
+            return None
 
         if best_score >= 85:
             fuzzy_score = min(best_score / 100, 0.99)
