@@ -2,19 +2,24 @@
   <div class="upload-box">
     <h2>Watch Matcher</h2>
 
-    <input type="file" accept=".xlsx" @change="handleFileChange" />
+    <div class="field">
+      <label>Выбери XLSX файл:</label>
+      <input type="file" accept=".xlsx" @change="handleFileChange" />
+    </div>
+
+    <div class="field">
+      <label>Или вставь ссылку на XLSX:</label>
+      <input
+        type="text"
+        v-model="fileUrl"
+        placeholder="https://example.com/file.xlsx"
+        class="url-input"
+      />
+    </div>
 
     <div class="buttons">
-      <button :disabled="!selectedFile || loading" @click="handlePreview">
-        Preview Excel
-      </button>
-
-      <button :disabled="!selectedFile || loading" @click="handleProcessPreview">
-        Process Preview
-      </button>
-
-      <button :disabled="!selectedFile || loading" @click="handleProcessFull">
-        Process Full File
+      <button :disabled="loading" @click="handleProcess">
+        Обработать
       </button>
     </div>
 
@@ -26,11 +31,12 @@
 
 <script setup>
 import { ref } from "vue";
-import { uploadPreview, processPreview, processFull } from "../services/api";
+import { processFull } from "../services/api";
 
-const emit = defineEmits(["previewLoaded", "processLoaded"]);
+const emit = defineEmits(["processLoaded"]);
 
 const selectedFile = ref(null);
+const fileUrl = ref("");
 const loading = ref(false);
 const error = ref("");
 
@@ -39,46 +45,25 @@ function handleFileChange(event) {
   error.value = "";
 }
 
-async function handlePreview() {
-  if (!selectedFile.value) return;
+async function handleProcess() {
+  const hasFile = !!selectedFile.value;
+  const hasUrl = fileUrl.value.trim() !== "";
 
-  loading.value = true;
-  error.value = "";
-
-  try {
-    const data = await uploadPreview(selectedFile.value);
-    emit("previewLoaded", data);
-  } catch (err) {
-    error.value = err.message;
-  } finally {
-    loading.value = false;
+  if (!hasFile && !hasUrl) {
+    error.value = "Выберите файл или вставьте ссылку на XLSX";
+    return;
   }
-}
 
-async function handleProcessPreview() {
-  if (!selectedFile.value) return;
-
-  loading.value = true;
-  error.value = "";
-
-  try {
-    const data = await processPreview(selectedFile.value);
-    emit("processLoaded", data);
-  } catch (err) {
-    error.value = err.message;
-  } finally {
-    loading.value = false;
+  if (hasFile && hasUrl) {
+    error.value = "Укажите что-то одно: либо файл, либо ссылку";
+    return;
   }
-}
-
-async function handleProcessFull() {
-  if (!selectedFile.value) return;
 
   loading.value = true;
   error.value = "";
 
   try {
-    const data = await processFull(selectedFile.value);
+    const data = await processFull(selectedFile.value, fileUrl.value);
     emit("processLoaded", data);
   } catch (err) {
     error.value = err.message;
@@ -95,6 +80,25 @@ async function handleProcessFull() {
   border-radius: 12px;
   margin-bottom: 20px;
   background: #fff;
+}
+
+.field {
+  margin-bottom: 14px;
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.url-input {
+  width: 100%;
+  max-width: 700px;
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
 }
 
 .buttons {

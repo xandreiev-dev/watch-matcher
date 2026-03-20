@@ -5,16 +5,27 @@ from xml.parsers.expat import model
 from matplotlib import text
 
 
-from app.core.constants import COLOR_MAP, COMMON_BRANDS, MODEL_NOISE_TOKENS
+from app.core.constants import BRAND_ALIASES, COLOR_MAP, COMMON_BRANDS, MODEL_NOISE_TOKENS
 from app.utils.text_normalizer import normalize_text, cleanup_model_text
 
 class ExtractionService:
     @staticmethod
-    def extract_brand(text: str, description: str = "") -> str:
-        combined = normalize_text(f"{title} {description}")
-        for brand in COMMON_BRANDS:
-            if re.search(rf"\b{re.escape(brand)}\b", combined):
-                return brand.capitalize()
+    def extract_brand(title: str, description: str = "") -> str:
+        title_text = normalize_text(title)
+        combined_text = normalize_text(f"{title} {description}")
+
+        for alias, canonical in BRAND_ALIASES.items():
+            pattern = rf"\b{re.escape(normalize_text(alias))}\b"
+
+            if re.search(pattern, title_text):
+                return canonical
+
+        for alias, canonical in BRAND_ALIASES.items():
+            pattern = rf"\b{re.escape(normalize_text(alias))}\b"
+
+            if re.search(pattern, combined_text):
+                return canonical
+
         return "Unknown"
     
     @staticmethod
@@ -36,19 +47,37 @@ class ExtractionService:
         return ""
     
     @staticmethod
-    def extract_warranty(description: str = "") -> str:
+    def extract_warranty(description: str) -> str:
         text = normalize_text(description)
-        
-        month_match = re.search(r"(\d+)\s*(месяц|месяцев|мес|month|months)", text)
-        if month_match:
-            return f"{month_match.group(1)} months"
-        
-        year_match = re.search(r"(\d+)\s*(год|года|лет|year|years)", text)
-        if year_match:
-            return f"{int(year_match.group(1)) * 12} months"
-        
-        if "гарантия" in text or "warranty" in text:
+
+        forward_match = re.search(
+            r"(?:гарант(?:ия)?|warranty)\s*[:\-]?\s*(\d+)\s*(дн(?:ей|я)?|day|days|мес(?:яц(?:ев|а)?)?|month|months|год|года|лет|year|years)",
+            text
+        )
+
+        reverse_match = re.search(
+            r"(\d+)\s*(дн(?:ей|я)?|day|days|мес(?:яц(?:ев|а)?)?|month|months|год|года|лет|year|years)\s*(?:гарант(?:ия)?|warranty)",
+            text
+        )
+
+        match = forward_match or reverse_match
+
+        if match:
+            value = int(match.group(1))
+            unit = match.group(2)
+
+            if unit.startswith("дн") or unit in {"day", "days"}:
+                return f"{value} days"
+
+            if unit.startswith("мес") or unit in {"month", "months"}:
+                return f"{value} months"
+
+            if unit.startswith("год") or unit == "лет" or unit in {"year", "years"}:
+                return f"{value * 12} months"
+
+        if "гарант" in text or "warranty" in text:
             return "Warranty mentioned"
+
         return ""
     
     @staticmethod

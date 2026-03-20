@@ -1,16 +1,18 @@
-import httpx
+import requests
 
-from app.core.config import VENDOR_WATCH_MODELS_URL, API_USER, API_PASSWORD
+from app.core.config import API_BASE, API_PASSWORD, API_USER
+
 
 class VendorService:
     @staticmethod
-    async def fetch_vendor_models() -> list[dict]:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.get(
-                VENDOR_WATCH_MODELS_URL,
-                auth=(API_USER, API_PASSWORD)
-            )
-            response.raise_for_status()
-        
-        data = response.json()
-        return data.get("data", [])
+    def fetch_vendor_models() -> list[dict]:
+        url = f"{API_BASE.rstrip('/')}/vendor/watch-models"
+
+        response = requests.get(
+            url,
+            auth=(API_USER, API_PASSWORD),
+            timeout=10,
+        )
+        response.raise_for_status()
+
+        return response.json().get("data", [])

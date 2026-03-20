@@ -7,7 +7,7 @@ router = APIRouter()
 @router.get("/models-preview")
 async def get_vendor_models_preview():
     try:
-        models = await VendorService.fetch_vendor_models()
+        models = VendorService.fetch_vendor_models()
         return {"total": len(models),
                 "preview": models[:10],
                 }

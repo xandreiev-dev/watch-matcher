@@ -6,38 +6,28 @@
       <thead>
         <tr>
           <th>Название</th>
+          <th>g_model_matched</th>
           <th>Бренд</th>
           <th>Модель</th>
-          <th>Matched</th>
-          <th>Confidence</th>
-          <th>Match Type</th>
           <th>Цвет</th>
           <th>Гарантия</th>
-          <th>Image</th>
-          <th>URL</th>
+          <th>image_url</th>
         </tr>
       </thead>
 
       <tbody>
         <tr v-for="(row, index) in rows" :key="index">
           <td>{{ row["Название"] }}</td>
+          <td>{{ row["g_model_matched"] }}</td>
           <td>{{ row["Бренд"] }}</td>
           <td>{{ row["Модель"] }}</td>
-          <td>{{ row["g_model_matched"] }}</td>
-          <td>{{ row["confidence"] }}</td>
-          <td>{{ row["match_type"] }}</td>
           <td>{{ row["Цвет"] }}</td>
           <td>{{ row["Гарантия"] }}</td>
           <td>
-            <img
-              v-if="row.image_url"
-              :src="row.image_url"
-              alt="watch"
-              class="thumb"
-            />
-          </td>
-          <td>
-            <a v-if="row.URL" :href="row.URL" target="_blank">Open</a>
+            <a v-if="row.image_url && row.URL" :href="row.URL" target="_blank">
+              <img :src="row.image_url" alt="watch" class="thumb" />
+            </a>
+            <span v-else>—</span>
           </td>
         </tr>
       </tbody>
@@ -89,5 +79,6 @@ th {
   width: 60px;
   height: auto;
   border-radius: 8px;
+  display: block;
 }
 </style>

@@ -15,20 +15,29 @@ PREVIEW_ROWS_COUNT = 5
 EXTRACTION_PREVIEW_ROWS_COUNT = 20
 
 COMMON_BRANDS = [
-    "apple",
-    "samsung",
-    "huawei",
-    "xiaomi",
-    "oppo",
-    "garmin",
-    "amazfit",
-    "honor",
-    "google",
-    "oneplus",
-    "realme",
-    "suunto",
-    "ticwatch",
+    "Apple",
+    "Samsung",
+    "Xiaomi",
+    "Huawei",
+    "Honor",
+    "Motorola",
+    "Google",
+    "OnePlus",
+    "Vivo",
 ]
+
+BRAND_ALIASES = {
+    "apple": "Apple",
+    "samsung": "Samsung",
+    "xiaomi": "Xiaomi",
+    "huawei": "Huawei",
+    "honor": "Honor",
+    "motorola": "Motorola",
+    "google": "Google",
+    "oneplus": "OnePlus",
+    "one plus": "OnePlus",
+    "vivo": "Vivo",
+}
 
 COLOR_MAP = {
     "black": "Black",

@@ -1,20 +1,11 @@
 <template>
   <div class="container">
-    <FileUpload
-      @previewLoaded="handlePreviewLoaded"
-      @processLoaded="handleProcessLoaded"
-    />
-
-    <ResultsTable
-      v-if="previewRows.length"
-      :rows="previewRows"
-      title="Excel Preview"
-    />
+    <FileUpload @processLoaded="handleProcessLoaded" />
 
     <ResultsTable
       v-if="processedRows.length"
       :rows="processedRows"
-      title="Processed Results"
+      title="Результат обработки"
     />
   </div>
 </template>
@@ -24,17 +15,10 @@ import { ref } from "vue";
 import FileUpload from "./components/FileUpload.vue";
 import ResultsTable from "./components/ResultsTable.vue";
 
-const previewRows = ref([]);
 const processedRows = ref([]);
 
-function handlePreviewLoaded(data) {
-  previewRows.value = data.preview || [];
-  processedRows.value = [];
-}
-
 function handleProcessLoaded(data) {
-  previewRows.value = [];
-  processedRows.value = data.preview || data.data || [];
+  processedRows.value = data.data || [];
 }
 </script>
 
