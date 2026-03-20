@@ -37,12 +37,7 @@ async def process_preview(file: UploadFile = File(...)):
             matched = MatchingService.match_model(brand, model, vendor_models)
 
             confidence = matched.get("score") if matched else 0
-
-            match_type = (
-                "exact" if confidence == 1
-                else "fuzzy" if confidence >= 0.85
-                else "none"
-            )
+            match_type = matched.get("match_type") if matched else "none"
 
             result.append(
                 {
@@ -55,6 +50,7 @@ async def process_preview(file: UploadFile = File(...)):
                     "image_url": matched.get("image_url") if matched else None,
                     "Цвет": color,
                     "Гарантия": warranty,
+                    "URL": row.get("URL", ""),
                 }
             )
 
