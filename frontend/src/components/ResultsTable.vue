@@ -16,7 +16,11 @@
       </thead>
 
       <tbody>
-        <tr v-for="(row, index) in rows" :key="index">
+        <tr
+          v-for="(row, index) in rows"
+          :key="index"
+          :class="getRowClass(row)"
+        >
           <td>{{ row["Название"] }}</td>
           <td>{{ row["g_model_matched"] }}</td>
           <td>{{ row["Бренд"] }}</td>
@@ -46,6 +50,14 @@ defineProps({
     default: "Results",
   },
 });
+
+function getRowClass(row) {
+  if (row["g_model_matched"] && row["g_model_matched"] !== "Unknown") {
+    return "row-matched";
+  }
+
+  return "row-unmatched";
+}
 </script>
 
 <style scoped>
@@ -80,5 +92,13 @@ th {
   height: auto;
   border-radius: 8px;
   display: block;
+}
+
+.row-matched {
+  background-color: #f0fdf4;
+}
+
+.row-unmatched {
+  background-color: #fef2f2;
 }
 </style>
