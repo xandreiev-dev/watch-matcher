@@ -1,3 +1,5 @@
+import re
+
 from rapidfuzz import fuzz
 
 
@@ -25,7 +27,14 @@ BAD_MODEL_KEYWORDS = [
 class MatchingService:
     @staticmethod
     def normalize(text: str) -> str:
-        return text.lower().strip().replace(",", "").replace(".", "")
+        text = text.lower().strip().replace(",", "").replace(".", "")
+        text = text.replace("-", " ").replace("_", " ")
+
+        text = re.sub(r"([a-zа-я])\s+(\d)", r"\1\2", text)
+        text = re.sub(r"(\d)\s+([a-zа-я])", r"\1\2", text)
+
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
     
     @staticmethod
     def is_invalid_pair(extracted_model: str, vendor_model: str) -> bool:
