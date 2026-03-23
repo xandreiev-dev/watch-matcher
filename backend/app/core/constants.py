@@ -24,6 +24,8 @@ COMMON_BRANDS = [
     "Google",
     "OnePlus",
     "Vivo",
+    "OPPO",
+    "Realme",
 ]
 
 BRAND_ALIASES = {

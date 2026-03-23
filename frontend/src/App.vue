@@ -2,6 +2,22 @@
   <div class="container">
     <FileUpload @processLoaded="handleProcessLoaded" />
 
+    <div v-if="processedRows.length" class="stats-bar">
+      <div class="stats-text">
+        <strong>Статистика:</strong>
+        всего {{ totalRows }} · совпало {{ matchedRows }} · не совпало {{ unmatchedRows }}
+      </div>
+
+      <div class="stats-actions">
+        <button @click="exportMatchedToExcel" class="export-btn green-btn">
+          Скачать matched.xlsx
+        </button>
+        <button @click="exportUnmatchedToExcel" class="export-btn green-btn">
+          Скачать unmatched.xlsx
+        </button>
+      </div>
+    </div>
+
     <div v-if="processedRows.length" class="toolbar">
       <div class="toolbar-group">
         <label for="search">Поиск:</label>
@@ -25,7 +41,7 @@
 
       <div class="toolbar-group">
         <button @click="exportToExcel" class="export-btn">
-          Экспорт в Excel
+          Экспорт текущего вида в Excel
         </button>
       </div>
     </div>
@@ -44,6 +60,7 @@
 
 <script setup>
 import { computed, ref } from "vue";
+import * as XLSX from "xlsx";
 import FileUpload from "./components/FileUpload.vue";
 import ResultsTable from "./components/ResultsTable.vue";
 
@@ -56,6 +73,24 @@ function handleProcessLoaded(data) {
   searchQuery.value = "";
   filterMode.value = "all";
 }
+
+const totalRows = computed(() => processedRows.value.length);
+
+const matchedRows = computed(() =>
+  processedRows.value.filter(
+    (row) =>
+      row["g_model_matched"] &&
+      row["g_model_matched"] !== "Unknown"
+  ).length
+);
+
+const unmatchedRows = computed(() =>
+  processedRows.value.filter(
+    (row) =>
+      !row["g_model_matched"] ||
+      row["g_model_matched"] === "Unknown"
+  ).length
+);
 
 const filteredRows = computed(() => {
   let rows = [...processedRows.value];
@@ -98,50 +133,49 @@ const filteredRows = computed(() => {
   });
 });
 
+function exportRowsToExcel(rows, filename) {
+  if (!rows.length) return;
+
+  const exportRows = rows.map((row) => ({
+    "Название": row["Название"] ?? "",
+    "g_model_matched": row["g_model_matched"] ?? "",
+    "Бренд": row["Бренд"] ?? "",
+    "Модель": row["Модель"] ?? "",
+    "Цвет": row["Цвет"] ?? "",
+    "Гарантия": row["Гарантия"] ?? "",
+    "URL": row["URL"] ?? "",
+    "image_url": row["image_url"] ?? "",
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(exportRows);
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Results");
+  XLSX.writeFile(workbook, filename);
+}
+
 function exportToExcel() {
-  if (!filteredRows.value.length) return;
+  exportRowsToExcel(filteredRows.value, "watch_matcher_results.xlsx");
+}
 
-  const headers = [
-    "Название",
-    "g_model_matched",
-    "Бренд",
-    "Модель",
-    "Цвет",
-    "Гарантия",
-    "URL",
-    "image_url",
-  ];
+function exportMatchedToExcel() {
+  const matched = processedRows.value.filter(
+    (row) =>
+      row["g_model_matched"] &&
+      row["g_model_matched"] !== "Unknown"
+  );
 
-  const csvRows = [
-    headers.join(","),
-    ...filteredRows.value.map((row) =>
-      headers
-        .map((header) => {
-          const value = row[header] ?? "";
-          const escaped = String(value).replace(/"/g, '""');
-          return `"${escaped}"`;
-        })
-        .join(",")
-    ),
-  ];
+  exportRowsToExcel(matched, "matched.xlsx");
+}
 
-  const csvContent = "\uFEFF" + csvRows.join("\n");
-  const blob = new Blob([csvContent], {
-    type: "text/csv;charset=utf-8;",
-  });
+function exportUnmatchedToExcel() {
+  const unmatched = processedRows.value.filter(
+    (row) =>
+      !row["g_model_matched"] ||
+      row["g_model_matched"] === "Unknown"
+  );
 
-  const link = document.createElement("a");
-  const url = URL.createObjectURL(blob);
-
-  link.setAttribute("href", url);
-  link.setAttribute("download", "watch_matcher_results.csv");
-  link.style.visibility = "hidden";
-
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  URL.revokeObjectURL(url);
+  exportRowsToExcel(unmatched, "unmatched.xlsx");
 }
 </script>
 
@@ -156,6 +190,29 @@ body {
   max-width: 1400px;
   margin: 0 auto;
   padding: 24px;
+}
+
+.stats-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  background: #0f172a;
+  color: white;
+  border-radius: 14px;
+}
+
+.stats-text {
+  font-size: 16px;
+}
+
+.stats-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .toolbar {
@@ -192,6 +249,14 @@ body {
   cursor: pointer;
   background: #111827;
   color: white;
+}
+
+.green-btn {
+  background: #059669;
+}
+
+.green-btn:hover {
+  background: #047857;
 }
 
 .empty-state {

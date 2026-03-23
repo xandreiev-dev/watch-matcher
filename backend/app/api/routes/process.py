@@ -23,6 +23,7 @@ async def process_preview(
         preview_df = preview_df.fillna("")
 
         vendor_models = VendorService.fetch_vendor_models()
+        brands = sorted({item.get("brand", "") for item in vendor_models})
 
         result = []
 
