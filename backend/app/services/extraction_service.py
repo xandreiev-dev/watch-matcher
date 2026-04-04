@@ -1,5 +1,7 @@
 import re
 
+from typing import Optional
+
 from app.core.constants import BRAND_ALIASES, COLOR_MAP, COMMON_BRANDS, MODEL_NOISE_TOKENS
 from app.utils.text_normalizer import normalize_text, cleanup_model_text
 
@@ -99,6 +101,17 @@ class ExtractionService:
             return "Warranty mentioned"
 
         return ""
+    
+    @staticmethod
+    def extract_article(url: str) -> Optional[str]:
+        if not url:
+            return None
+
+        match = re.search(r'(?:_|/)(\d{6,})(?:[/?#]|$)', str(url))
+        if match:
+            return match.group(1)
+
+        return None
     
     @staticmethod
     def extract_model(title: str, brand: str) -> str:
