@@ -75,10 +75,8 @@ async def process_preview(
         preview_df = dataframe.head(EXTRACTION_PREVIEW_ROWS_COUNT).copy()
         preview_df = preview_df.fillna("")
 
-        # Временно
-        catalog = WatchReferenceCatalog.load_models(brand="Garmin")
-        print("CATALOG SIZE:", len(catalog))
-        print("FIRST CATALOG ROW:", catalog[0] if catalog else None)
+        catalog = WatchReferenceCatalog.load_models()
+
 
         result = []
         for _, row in preview_df.iterrows():

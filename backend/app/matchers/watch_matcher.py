@@ -64,14 +64,14 @@ class WatchMatcher:
                 needs_manual_review=True,
             )
 
-        family_generation = cls.find_family_generation_match(features, brand_rows)
-        if family_generation:
+        family_variant = cls.find_family_variant_match(features, brand_rows)
+        if family_variant:
             return WatchMatchResult(
-                match_status="possible_match",
-                matched_model_id=family_generation.get("id"),
-                matched_model_name=family_generation.get("model_name"),
-                match_method="family_generation_only",
-                confidence=0.7,
+                match_status="matched",
+                matched_model_id=family_variant.get("id"),
+                matched_model_name=family_variant.get("model_name"),
+                match_method="family_variant_with_optional_size",
+                confidence=0.82,
                 needs_manual_review=True,
             )
 
@@ -84,7 +84,12 @@ class WatchMatcher:
 
     @classmethod
     def find_exact_match(cls, features: WatchFeatures, rows: list[dict]) -> dict | None:
+        if not features.family or not features.generation:
+            return None
+
         for row in rows:
+            if not row.get("family") or not row.get("generation"):
+                continue
             if not cls.same_family(features.family, row.get("family")):
                 continue
             if not cls.same_generation(features.generation, row.get("generation")):
@@ -98,22 +103,40 @@ class WatchMatcher:
 
     @classmethod
     def find_soft_match(cls, features: WatchFeatures, rows: list[dict]) -> dict | None:
+        if not features.family or not features.generation:
+            return None
+
         candidates = []
 
         for row in rows:
-            if not cls.same_family(features.family, row.get("family")):
+            row_family = row.get("family")
+            row_generation = row.get("generation")
+            row_variant = row.get("variant")
+            row_size = row.get("case_size_mm")
+
+            if not row_family or not row_generation:
                 continue
-            if not cls.same_generation(features.generation, row.get("generation")):
+
+            if not cls.same_family(features.family, row_family):
                 continue
+
+            if not cls.same_generation(features.generation, row_generation):
+                continue
+
+            # ВАЖНО:
+            # если у объявления variant указан, то soft-match без совпадения variant запрещаем
+            if features.variant:
+                if not cls.same_variant(features.variant, row_variant):
+                    continue
 
             score = 0
 
-            if cls.same_variant(features.variant, row.get("variant")):
+            if cls.same_variant(features.variant, row_variant):
                 score += 2
 
-            if cls.same_size(features.size_mm, row.get("case_size_mm")):
+            if cls.same_size(features.size_mm, row_size):
                 score += 2
-            elif features.size_mm is None or row.get("case_size_mm") is None:
+            elif features.size_mm is None or row_size is None:
                 score += 1
 
             candidates.append((score, row))
@@ -128,10 +151,58 @@ class WatchMatcher:
             return best_row
 
         return None
+    
+    @classmethod
+    def find_family_variant_match(cls, features: WatchFeatures, rows: list[dict]) -> dict | None:
+        if not features.family or not features.variant:
+            return None
+
+        candidates = []
+
+        for row in rows:
+            if not row.get("family"):
+                continue
+
+            if not cls.same_family(features.family, row.get("family")):
+                continue
+
+            if not cls.same_variant(features.variant, row.get("variant")):
+                continue
+
+            score = 0
+
+            # size — сильный сигнал
+            if cls.same_size(features.size_mm, row.get("case_size_mm")):
+                score += 2
+            elif features.size_mm is None or row.get("case_size_mm") is None:
+                score += 1
+
+            candidates.append((score, row))
+
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        best_score, best_row = candidates[0]
+
+        # если есть size match — отлично
+        if best_score >= 2:
+            return best_row
+
+        # если кандидат ровно один и family+variant уникальны — тоже можно брать
+        if len(candidates) == 1:
+            return best_row
+
+        return None
 
     @classmethod
     def find_family_generation_match(cls, features: WatchFeatures, rows: list[dict]) -> dict | None:
+        if not features.family or not features.generation:
+            return None
+
         for row in rows:
+            if not row.get("family") or not row.get("generation"):
+                continue
             if cls.same_family(features.family, row.get("family")) and cls.same_generation(
                 features.generation, row.get("generation")
             ):

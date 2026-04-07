@@ -2,8 +2,11 @@ from app.schemas.watch_features import WatchFeatures
 from app.services.extraction_service import ExtractionService
 from app.extractors.size_extractor import SizeExtractor
 from app.normalizers.watch_title_normalizer import WatchTitleNormalizer
-from app.extractors.brand_parsers.garmin_parser import GarminParser
 
+from app.extractors.brand_parsers.garmin_parser import GarminParser
+from app.extractors.brand_parsers.apple_parser import AppleParser
+from app.extractors.brand_parsers.samsung_parser import SamsungParser
+from app.extractors.brand_parsers.huawei_parser import HuaweiParser
 
 ACCESSORY_KEYWORDS = {
     "ремешок", "ремень", "браслет", "strap", "band", "loop", "case", "glass", "стекло", "чехол"
@@ -32,7 +35,18 @@ class WatchFeatureExtractor:
             is_multi_model=False,
         )
 
+        brand = (features.brand or "").lower()
+
         if features.brand == "Garmin":
             features = GarminParser.parse(features)
 
+        elif features.brand == "Apple":
+            features = AppleParser.parse(features)
+
+        elif features.brand == "Samsung":
+            features = SamsungParser.parse(features)
+
+        elif features.brand == "Huawei":
+            features = HuaweiParser.parse(features)
+            
         return features

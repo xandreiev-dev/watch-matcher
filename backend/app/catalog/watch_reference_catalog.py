@@ -13,7 +13,8 @@ class WatchReferenceCatalog:
         result = []
         for row in rows:
             parsed = WatchReferenceNormalizer.extract_family_generation_variant(
-                row.get("model_name", "")
+                row.get("model_name", ""),
+                row.get("brand"),
             )
 
             result.append(
