@@ -68,63 +68,59 @@ const processedRows = ref([]);
 const searchQuery = ref("");
 const filterMode = ref("all");
 
-function handleProcessLoaded(data) {
-  processedRows.value = data.data || [];
+function handleProcessLoaded(payload) {
+  processedRows.value = payload?.data || [];
   searchQuery.value = "";
   filterMode.value = "all";
+}
+
+function isMatched(row) {
+  return row?.match_status === "matched";
+}
+
+function isUnmatched(row) {
+  return row?.match_status !== "matched";
 }
 
 const totalRows = computed(() => processedRows.value.length);
 
 const matchedRows = computed(() =>
-  processedRows.value.filter(
-    (row) =>
-      row["g_model_matched"] &&
-      row["g_model_matched"] !== "Unknown"
-  ).length
+  processedRows.value.filter((row) => isMatched(row)).length
 );
 
 const unmatchedRows = computed(() =>
-  processedRows.value.filter(
-    (row) =>
-      !row["g_model_matched"] ||
-      row["g_model_matched"] === "Unknown"
-  ).length
+  processedRows.value.filter((row) => isUnmatched(row)).length
 );
 
 const filteredRows = computed(() => {
   let rows = [...processedRows.value];
 
   if (filterMode.value === "matched") {
-    rows = rows.filter(
-      (row) =>
-        row["g_model_matched"] &&
-        row["g_model_matched"] !== "Unknown"
-    );
-  }
-
-  if (filterMode.value === "unmatched") {
-    rows = rows.filter(
-      (row) =>
-        !row["g_model_matched"] ||
-        row["g_model_matched"] === "Unknown"
-    );
+    rows = rows.filter((row) => isMatched(row));
+  } else if (filterMode.value === "unmatched") {
+    rows = rows.filter((row) => isUnmatched(row));
   }
 
   const query = searchQuery.value.trim().toLowerCase();
-
-  if (!query) {
-    return rows;
-  }
+  if (!query) return rows;
 
   return rows.filter((row) => {
     const haystack = [
       row["Название"] || "",
       row["Бренд"] || "",
       row["Модель"] || "",
-      row["g_model_matched"] || "",
+      row["match_status"] || "",
+      row["matched_model_name"] || "",
+      row["matched_model_id"] ?? "",
+      row["family"] || "",
+      row["generation"] || "",
+      row["variant"] || "",
+      row["article"] || "",
       row["Цвет"] || "",
       row["Гарантия"] || "",
+      row["URL"] || "",
+      row["image_url"] || "",
+      row["img_url"] || "",
     ]
       .join(" ")
       .toLowerCase();
@@ -133,19 +129,35 @@ const filteredRows = computed(() => {
   });
 });
 
-function exportRowsToExcel(rows, filename) {
-  if (!rows.length) return;
+function normalizeRowForExport(row) {
+  const imageUrl = row["image_url"] || row["img_url"] || "";
 
-  const exportRows = rows.map((row) => ({
+  return {
     "Название": row["Название"] ?? "",
-    "g_model_matched": row["g_model_matched"] ?? "",
     "Бренд": row["Бренд"] ?? "",
     "Модель": row["Модель"] ?? "",
+    "article": row["article"] ?? "",
+    "size_mm": row["size_mm"] ?? "",
+    "family": row["family"] ?? "",
+    "generation": row["generation"] ?? "",
+    "variant": row["variant"] ?? "",
     "Цвет": row["Цвет"] ?? "",
     "Гарантия": row["Гарантия"] ?? "",
     "URL": row["URL"] ?? "",
-    "image_url": row["image_url"] ?? "",
-  }));
+    "image_url": imageUrl,
+    "img_url": imageUrl,
+    "match_status": row["match_status"] ?? "",
+    "matched_model_id": row["matched_model_id"] ?? "",
+    "matched_model_name": row["matched_model_name"] ?? "",
+    "match_method": row["match_method"] ?? "",
+    "needs_manual_review": row["needs_manual_review"] ?? "",
+  };
+}
+
+function exportRowsToExcel(rows, filename) {
+  if (!rows.length) return;
+
+  const exportRows = rows.map(normalizeRowForExport);
 
   const worksheet = XLSX.utils.json_to_sheet(exportRows);
   const workbook = XLSX.utils.book_new();
@@ -159,22 +171,12 @@ function exportToExcel() {
 }
 
 function exportMatchedToExcel() {
-  const matched = processedRows.value.filter(
-    (row) =>
-      row["g_model_matched"] &&
-      row["g_model_matched"] !== "Unknown"
-  );
-
+  const matched = processedRows.value.filter((row) => isMatched(row));
   exportRowsToExcel(matched, "matched.xlsx");
 }
 
 function exportUnmatchedToExcel() {
-  const unmatched = processedRows.value.filter(
-    (row) =>
-      !row["g_model_matched"] ||
-      row["g_model_matched"] === "Unknown"
-  );
-
+  const unmatched = processedRows.value.filter((row) => isUnmatched(row));
   exportRowsToExcel(unmatched, "unmatched.xlsx");
 }
 </script>
