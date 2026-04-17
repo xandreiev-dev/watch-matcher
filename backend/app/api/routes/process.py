@@ -10,22 +10,31 @@ from app.catalog.watch_reference_catalog import WatchReferenceCatalog
 router = APIRouter()
 
 
-def process_watch_row(row: dict, catalog: list[dict]) -> dict:
+def process_watch_row(
+    row: dict,
+    models_catalog: list[dict],
+    variants_catalog: list[dict],
+) -> dict:
     preprocessed = WatchPreprocessService.preprocess_row(row)
 
     features = WatchFeatureExtractor.extract(
-    title=preprocessed.product_name,
-    description=preprocessed.description,
-    brand=preprocessed.brand,
+        title=preprocessed.product_name,
+        description=preprocessed.description,
+        brand=preprocessed.brand,
+        
     )
 
-    # На текущем этапе считаем preprocess источником правды
+    # preprocess остаётся источником правды по базовым полям
     features.brand = preprocessed.brand
     features.size_mm = preprocessed.size_mm
     features.is_accessory = preprocessed.is_accessory
     features.is_multi_model = preprocessed.is_multi_model or features.is_multi_model
 
-    match_result = WatchMatcher.match(features, catalog)
+    match_result = WatchMatcher.match(
+        features=features,
+        models_catalog=models_catalog,
+        variants_catalog=variants_catalog,
+    )
 
     if match_result.match_status == "ambiguous_multi_model":
         features.is_multi_model = True
@@ -48,6 +57,10 @@ def process_watch_row(row: dict, catalog: list[dict]) -> dict:
         "family": features.family,
         "generation": features.generation,
         "variant": features.variant,
+        "model_candidates": features.model_candidates,
+        "extracted_material": features.extracted_material,
+        "extracted_connectivity": features.extracted_connectivity,
+        "extracted_variant_name": features.extracted_variant_name,
         "Цвет": features.color,
         "Гарантия": features.warranty_period,
         "URL": preprocessed.product_url,
@@ -55,6 +68,8 @@ def process_watch_row(row: dict, catalog: list[dict]) -> dict:
         "shop_rating": preprocessed.shop_rating,
         "price": preprocessed.price,
         "match_status": match_result.match_status,
+        "matched_variant_id": match_result.matched_variant_id,
+        "matched_variant_name": match_result.matched_variant_name,
         "matched_model_id": match_result.matched_model_id,
         "matched_model_name": match_result.matched_model_name,
         "match_method": match_result.match_method,
@@ -75,13 +90,13 @@ async def process_preview(
         preview_df = dataframe.head(EXTRACTION_PREVIEW_ROWS_COUNT).copy()
         preview_df = preview_df.fillna("")
 
-        catalog = WatchReferenceCatalog.load_models()
-
+        models_catalog = WatchReferenceCatalog.load_models()
+        variants_catalog = WatchReferenceCatalog.load_variants()
 
         result = []
         for _, row in preview_df.iterrows():
             row_dict = row.to_dict()
-            result.append(process_watch_row(row_dict, catalog))
+            result.append(process_watch_row(row_dict, models_catalog, variants_catalog))
 
         return {
             "filename": source_name,
@@ -109,12 +124,13 @@ async def process_file(
         processed_df = dataframe.copy()
         processed_df = processed_df.fillna("")
 
-        catalog = WatchReferenceCatalog.load_models()
+        models_catalog = WatchReferenceCatalog.load_models()
+        variants_catalog = WatchReferenceCatalog.load_variants()
 
         result = []
         for _, row in processed_df.iterrows():
             row_dict = row.to_dict()
-            result.append(process_watch_row(row_dict, catalog))
+            result.append(process_watch_row(row_dict, models_catalog, variants_catalog))
 
         return {
             "filename": source_name,

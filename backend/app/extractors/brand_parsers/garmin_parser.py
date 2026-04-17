@@ -12,11 +12,15 @@ class GarminParser:
         "venu",
         "vivoactive",
         "vivomove",
+        "vivosmart",
         "tactix",
         "marq",
         "descent",
         "quatix",
         "approach",
+        "lily",
+        "swim",
+        "d2",
     ]
 
     FAMILY_DISPLAY = {
@@ -28,11 +32,15 @@ class GarminParser:
         "venu": "Venu",
         "vivoactive": "Vivoactive",
         "vivomove": "Vivomove",
+        "vivosmart": "Vivosmart",
         "tactix": "Tactix",
         "marq": "Marq",
         "descent": "Descent",
         "quatix": "Quatix",
         "approach": "Approach",
+        "lily": "Lily",
+        "swim": "Swim",
+        "d2": "D2",
     }
 
     NOISE_WORDS = [
@@ -49,12 +57,23 @@ class GarminParser:
         "умные часы",
         "смарт часы",
         "смарт-часы",
+        "смартчасы",
         "часы",
+        "smart watch",
+        "smartwatch",
+        "garmin",
+    ]
+
+    MULTI_MODEL_PATTERNS = [
+        r"\b\d{2}\s*mm\s*/\s*\d{2}\s*mm\b",
+        r"\b\d{2}\s*mm\s*,\s*\d{2}\s*mm\b",
+        r"\b\d{2}\s*/\s*\d{2}\s*mm\b",
+        r"\b[a-z]?\d+[a-z]?\s*/\s*[a-z]?\d+[a-z]?\b",
     ]
 
     @classmethod
     def parse(cls, features: WatchFeatures) -> WatchFeatures:
-        text = features.normalized_title
+        text = features.normalized_title or ""
         if not text:
             return features
 
@@ -64,18 +83,44 @@ class GarminParser:
             features.is_multi_model = True
             return features
 
-        family = cls.extract_family(cleaned)
-        generation = cls.extract_generation(cleaned, family)
-        variant = cls.extract_variant(cleaned)
+        parsed = cls.extract_model_fields(cleaned)
 
-        if family:
-            features.family = cls.FAMILY_DISPLAY.get(family, family.title())
+        if parsed["family"]:
+            features.family = cls.FAMILY_DISPLAY.get(parsed["family"], parsed["family"].title())
 
-        if generation:
-            features.generation = generation
+        if parsed["generation"]:
+            features.generation = parsed["generation"]
 
-        if variant:
-            features.variant = variant
+        if parsed["variant"]:
+            features.variant = parsed["variant"]
+
+        model_candidates = cls.build_model_candidates(
+            family=parsed["family"],
+            generation=parsed["generation"],
+            variant=parsed["variant"],
+            size_mm=features.size_mm,
+        )
+        if model_candidates:
+            features.model_candidates = model_candidates
+
+        variant_name = cls.build_variant_name(
+            family=parsed["family"],
+            generation=parsed["generation"],
+            variant=parsed["variant"],
+            size_mm=features.size_mm,
+        )
+        if variant_name:
+            features.extracted_variant_name = variant_name
+
+        print("==== GARMIN EXTRACT DEBUG ====")
+        print("TITLE:", features.normalized_title)
+        print("BRAND:", features.brand)
+        print("FAMILY:", features.family)
+        print("GENERATION:", features.generation)
+        print("VARIANT:", features.variant)
+        print("MODEL_CANDIDATES:", features.model_candidates)
+        print("EXTRACTED_VARIANT_NAME:", features.extracted_variant_name)
+        print("==============================")
 
         return features
 
@@ -83,10 +128,17 @@ class GarminParser:
     def cleanup_text(cls, text: str) -> str:
         cleaned = text.lower().strip()
         cleaned = cleaned.replace("мм", "mm")
+        cleaned = cleaned.replace("-", " ")
+        cleaned = cleaned.replace("_", " ")
+        cleaned = cleaned.replace(",", " ")
+        cleaned = cleaned.replace("/", " / ")
+        cleaned = cleaned.replace("(", " ")
+        cleaned = cleaned.replace(")", " ")
 
         for noise in cls.NOISE_WORDS:
             cleaned = re.sub(rf"\b{re.escape(noise)}\b", " ", cleaned)
 
+        # mk3i / mk2s / 255s / 265s не трогаем
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         return cleaned
 
@@ -95,61 +147,36 @@ class GarminParser:
         if not text:
             return False
 
-        # 1. разные family в одной строке через /
-        found_families = [
-            family for family in cls.FAMILIES
-            if re.search(rf"\b{re.escape(family)}\b", text)
-        ]
-        if "/" in text and len(found_families) >= 2:
-            return True
-
-        # 2. одна family, но несколько моделей:
-        # forerunner 970 / forerunner 570
-        for family in cls.FAMILIES:
-            if re.search(
-                rf"\b{re.escape(family)}\s+[a-z]?\d+[a-z]?\s*/\s*(?:{re.escape(family)}\s+)?[a-z]?\d+[a-z]?\b",
-                text,
-            ):
+        for pattern in cls.MULTI_MODEL_PATTERNS:
+            if re.search(pattern, text):
                 return True
 
-        # 3. одна family и 3 поколения:
-        # forerunner 970 / 965 / 570
-        for family in cls.FAMILIES:
-            if re.search(
-                rf"\b{re.escape(family)}\s+[a-z]?\d+[a-z]?\s*/\s*[a-z]?\d+[a-z]?\s*/\s*[a-z]?\d+[a-z]?\b",
-                text,
-            ):
-                return True
-
-        # 4. одна family + несколько размеров:
-        # fenix 8 51mm / 47mm
-        for family in cls.FAMILIES:
-            if re.search(
-                rf"\b{re.escape(family)}\s+[a-z]?\d+[a-z]?.*\b\d{{2}}mm\s*/\s*\d{{2}}mm\b",
-                text,
-            ):
-                return True
-
-        # 5. одна и та же family, но через / перечислены разные variant-конфигурации
-        # tactix 8 amoled / tactix 8 solar ballistics
-        # tactix 8 solar ballistics 51mm / amoled 47
-        for family in cls.FAMILIES:
-            if re.search(
-                rf"\b{re.escape(family)}\s+[a-z]?\d+[a-z]?.*/.*(?:amoled|solar|sapphire|ballistics)",
-                text
-            ) and "/" in text:
-                return True
-
-        # 6. несколько размеров вообще
-        size_hits = re.findall(r"\b\d{2}mm\b", text)
+        size_hits = re.findall(r"\b\d{2}\s*mm\b", text)
         if len(set(size_hits)) > 1:
             return True
 
-        # 7. много слешей — почти всегда сборная строка
-        if text.count("/") >= 2:
-            return True
+        # forerunner 970 / 570
+        if re.search(r"/", text):
+            family_hits = [
+                family for family in cls.FAMILIES
+                if re.search(rf"\b{re.escape(family)}\b", text)
+            ]
+            if len(set(family_hits)) > 1:
+                return True
 
         return False
+
+    @classmethod
+    def extract_model_fields(cls, text: str) -> dict:
+        family = cls.extract_family(text)
+        generation = cls.extract_generation(text, family)
+        variant = cls.extract_variant(text, family, generation)
+
+        return {
+            "family": family,
+            "generation": generation,
+            "variant": variant,
+        }
 
     @classmethod
     def extract_family(cls, text: str) -> str | None:
@@ -163,20 +190,111 @@ class GarminParser:
         if not family:
             return None
 
-        # family + число: forerunner 970 / fenix 8 / enduro 3 / venu 4
-        m = re.search(rf"\b{re.escape(family)}\s+(\d+[a-z]?)\b", text)
-        if m:
-            return m.group(1).upper()
+        if family == "marq":
+            m = re.search(r"\bmarq\s+(adventurer|athlete|aviator|captain|commander|golfer)\b", text)
+            if m:
+                role = m.group(1).title()
+                gen = None
+                g = re.search(r"\bgen\s*(\d+)\b", text)
+                if g:
+                    gen = f"Gen {g.group(1)}"
+                return f"{role} {gen}".strip() if gen else role
 
-        # family + X1 / S70
-        m = re.search(rf"\b{re.escape(family)}\s+([a-z]\d+[a-z]?)\b", text)
-        if m:
-            return m.group(1).upper()
+        if family == "d2":
+            m = re.search(r"\bd2\s+(air\s*x10|mach\s*1(?:\s*pro)?)\b", text)
+            if m:
+                return re.sub(r"\s+", " ", m.group(1)).title()
+
+        if family == "descent":
+            m = re.search(r"\bdescent\s+(mk\d+i?|g\d|x\d+i?)\b", text)
+            if m:
+                return m.group(1).upper()
+
+        if family == "approach":
+            m = re.search(r"\bapproach\s+([sgx]?\d+[a-z]?)\b", text)
+            if m:
+                return m.group(1).upper()
+
+        if family == "quatix":
+            m = re.search(r"\bquatix\s+(\d+[a-z]?)\b", text)
+            if m:
+                return m.group(1).upper()
+
+        if family == "tactix":
+            m = re.search(r"\btactix\s+(\d+[a-z]?)\b", text)
+            if m:
+                return m.group(1).upper()
+
+        if family == "fenix":
+            # fenix e
+            if re.search(r"\bfenix\s+e\b", text):
+                return "E"
+
+            m = re.search(r"\bfenix\s+(\d+[a-z]?)\b", text)
+            if m:
+                return m.group(1).upper()
+
+        if family == "epix":
+            if re.search(r"\bgen\s*2\b", text):
+                return "Gen 2"
+
+        if family == "instinct":
+            if re.search(r"\bcrossover\b", text):
+                return "Crossover"
+            if re.search(r"\be\b", text):
+                return "E"
+            m = re.search(r"\binstinct\s+(\d+[a-z]?)\b", text)
+            if m:
+                return m.group(1).upper()
+
+        if family == "forerunner":
+            m = re.search(r"\bforerunner\s+(\d+[a-z]*|x1)\b", text)
+            if m:
+                return m.group(1).upper()
+
+        if family == "venu":
+            if re.search(r"\bvenu\s+sq\b", text):
+                return "SQ"
+            if re.search(r"\bvenu\s+x1\b", text):
+                return "X1"
+            m = re.search(r"\bvenu\s+(\d+[a-z]?)\b", text)
+            if m:
+                return m.group(1).upper()
+
+        if family == "vivoactive":
+            m = re.search(r"\bvivoactive\s+(\d+[a-z]?)\b", text)
+            if m:
+                return m.group(1).upper()
+
+        if family == "vivomove":
+            m = re.search(r"\bvivomove\s+(hr|luxe|sport|style|trend)\b", text)
+            if m:
+                return m.group(1).title()
+
+        if family == "vivosmart":
+            m = re.search(r"\bvivosmart\s+(\d+[a-z]?)\b", text)
+            if m:
+                return m.group(1).upper()
+
+        if family == "lily":
+            m = re.search(r"\blily\s+(\d+)\b", text)
+            if m:
+                return m.group(1)
+
+        if family == "swim":
+            m = re.search(r"\bswim\s+(\d+)\b", text)
+            if m:
+                return m.group(1)
+
+        if family == "enduro":
+            m = re.search(r"\benduro\s+(\d+)\b", text)
+            if m:
+                return m.group(1)
 
         return None
 
     @classmethod
-    def extract_variant(cls, text: str) -> str | None:
+    def extract_variant(cls, text: str, family: str | None, generation: str | None) -> str | None:
         found: list[str] = []
 
         if re.search(r"\bsapphire\s+solar\b", text):
@@ -205,12 +323,157 @@ class GarminParser:
         if re.search(r"\bballistics\b", text):
             found.append("Ballistics")
 
-        if not found:
-            return None
+        if re.search(r"\btactical\b", text):
+            found.append("Tactical")
+
+        if re.search(r"\bclassic\b", text):
+            found.append("Classic")
+
+        if re.search(r"\bactive\b", text) and family == "lily":
+            found.append("Active")
+
+        if re.search(r"\bsport\b", text) and family in {"lily", "vivomove"}:
+            found.append("Sport")
 
         unique = []
         for item in found:
             if item not in unique:
                 unique.append(item)
 
-        return " ".join(unique)
+        return " ".join(unique) if unique else None
+
+    @classmethod
+    def build_model_candidates(
+        cls,
+        family: str | None,
+        generation: str | None,
+        variant: str | None,
+        size_mm: int | None,
+    ) -> list[str]:
+        if not family:
+            return []
+
+        family_text = family.lower()
+        candidates: list[str] = []
+
+        if family == "marq":
+            if generation:
+                candidates.append(f"marq {generation.lower()}")
+                # fallback без gen
+                gen_less = re.sub(r"\s+gen\s+\d+", "", generation.lower())
+                if gen_less != generation.lower():
+                    candidates.append(f"marq {gen_less}")
+
+        elif family == "d2":
+            if generation:
+                candidates.append(f"d2 {generation.lower()}")
+
+        elif family in {"descent", "approach", "quatix", "tactix", "forerunner", "vivoactive", "vivosmart", "swim", "enduro"}:
+            if generation and variant:
+                candidates.append(f"{family_text} {generation.lower()} {variant.lower()}")
+            if generation:
+                candidates.append(f"{family_text} {generation.lower()}")
+            if variant and not generation:
+                candidates.append(f"{family_text} {variant.lower()}")
+            candidates.append(family_text)
+
+        elif family == "fenix":
+            if generation == "E":
+                candidates.append("fenix e")
+            else:
+                if generation and variant:
+                    candidates.append(f"fenix {generation.lower()} {variant.lower()}")
+                if generation:
+                    candidates.append(f"fenix {generation.lower()}")
+                if variant and not generation:
+                    candidates.append(f"fenix {variant.lower()}")
+            candidates.append("fenix")
+
+        elif family == "epix":
+            if generation == "Gen 2":
+                if variant:
+                    candidates.append(f"epix gen 2 {variant.lower()}")
+                candidates.append("epix gen 2")
+            if variant and generation != "Gen 2":
+                candidates.append(f"epix {variant.lower()}")
+            candidates.append("epix")
+
+        elif family == "instinct":
+            if generation == "Crossover":
+                if variant:
+                    candidates.append(f"instinct crossover {variant.lower()}")
+                candidates.append("instinct crossover")
+            elif generation == "E":
+                candidates.append("instinct e")
+            else:
+                if generation and variant:
+                    candidates.append(f"instinct {generation.lower()} {variant.lower()}")
+                if generation:
+                    candidates.append(f"instinct {generation.lower()}")
+            if variant and generation not in {"Crossover", "E"} and not generation:
+                candidates.append(f"instinct {variant.lower()}")
+            candidates.append("instinct")
+
+        elif family == "venu":
+            if generation == "SQ":
+                if variant:
+                    candidates.append(f"venu sq {variant.lower()}")
+                candidates.append("venu sq 2" if "2" in (variant or "") else "venu sq")
+                candidates.append("venu sq")
+            elif generation == "X1":
+                candidates.append("venu x1")
+            else:
+                if generation and variant:
+                    candidates.append(f"venu {generation.lower()} {variant.lower()}")
+                if generation:
+                    candidates.append(f"venu {generation.lower()}")
+            candidates.append("venu")
+
+        elif family == "vivomove":
+            if generation:
+                candidates.append(f"vivomove {generation.lower()}")
+            candidates.append("vivomove")
+
+        elif family == "lily":
+            if generation and variant:
+                candidates.append(f"lily {generation.lower()} {variant.lower()}")
+            if generation:
+                candidates.append(f"lily {generation.lower()}")
+            if variant and not generation:
+                candidates.append(f"lily {variant.lower()}")
+            candidates.append("lily")
+
+        result: list[str] = []
+        seen = set()
+
+        for item in candidates:
+            item = re.sub(r"\s+", " ", item).strip()
+            if item and item not in seen:
+                seen.add(item)
+                result.append(item)
+
+        return result
+
+    @classmethod
+    def build_variant_name(
+        cls,
+        family: str | None,
+        generation: str | None,
+        variant: str | None,
+        size_mm: int | None,
+    ) -> str | None:
+        if not family:
+            return None
+
+        parts: list[str] = [cls.FAMILY_DISPLAY.get(family, family.title())]
+
+        if generation:
+            parts.append(generation)
+
+        if variant:
+            parts.append(variant)
+
+        if size_mm:
+            parts.append(f"{int(size_mm)}mm")
+
+        return " ".join(parts).strip() if parts else None
