@@ -67,16 +67,6 @@ class GoogleParser:
         if variant_name:
             features.extracted_variant_name = variant_name
 
-        print("==== GOOGLE EXTRACT DEBUG ====")
-        print("TITLE:", features.normalized_title)
-        print("BRAND:", features.brand)
-        print("FAMILY:", features.family)
-        print("GENERATION:", features.generation)
-        print("VARIANT:", features.variant)
-        print("MODEL_CANDIDATES:", features.model_candidates)
-        print("EXTRACTED_VARIANT_NAME:", features.extracted_variant_name)
-        print("==============================")
-
         return features
 
     @classmethod

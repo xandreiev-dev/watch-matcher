@@ -42,6 +42,21 @@ class WatchReferenceNormalizer:
         
         if brand_lower == "honor":
             return cls.extract_honor(text)
+        
+        if brand_lower == "motorola" or brand_lower == "moto":
+            return cls.extract_motorola(text)
+        
+        if brand_lower == "oneplus" or brand_lower == "one plus":
+            return cls.extract_oneplus(text)
+        
+        if brand_lower == "oppo":
+            return cls.extract_oppo(text)
+        
+        if brand_lower == "vivo" or brand_lower == "iqoo":
+            return cls.extract_vivo(text)
+        
+        if brand_lower == "xiaomi" or brand_lower == "redmi" or brand_lower == "poco":
+            return cls.extract_xiaomi(text)
 
         return {
             "family": None,
@@ -675,4 +690,300 @@ class WatchReferenceNormalizer:
             "generation": generation,
             "variant": variant,
         }
-                
+    
+    @classmethod
+    def extract_motorola(cls, text: str) -> dict:
+        family = None
+        generation = None
+        variant = None
+
+        text = text.replace("motowatch", "moto watch")
+
+        if re.search(r"\bwatch\s+fit\b", text):
+            family = "Watch"
+            variant = "Fit"
+            return {
+                "family": family,
+                "generation": generation,
+                "variant": variant,
+            }
+
+        m = re.search(r"\bwatch\s*(40|70|100|120|150|200)\b", text)
+        if m:
+            family = "Watch"
+            generation = m.group(1)
+            return {
+                "family": family,
+                "generation": generation,
+                "variant": variant,
+            }
+
+        if re.search(r"\bwatch\b", text):
+            family = "Watch"
+
+        return {
+            "family": family,
+            "generation": generation,
+            "variant": variant,
+        }           
+    
+
+    @classmethod
+    def extract_oneplus(cls, text: str) -> dict:
+        family = None
+        generation = None
+        found_variants = []
+
+        text = re.sub(r"\bwatch(\d+r)\b", r"watch \1", text)
+        text = re.sub(r"\bwatch(\d+)\b", r"watch \1", text)
+
+        if re.search(r"\bnord\s+watch\b", text):
+            family = "Nord"
+            return {
+                "family": family,
+                "generation": generation,
+                "variant": None,
+            }
+
+        if re.search(r"\bwatch\s+lite\b", text):
+            family = "Watch"
+            found_variants.append("Lite")
+            m = re.search(r"\bwatch\s*(\d+)\s+lite\b", text)
+            if m:
+                generation = m.group(1)
+
+            return {
+                "family": family,
+                "generation": generation,
+                "variant": " ".join(found_variants) if found_variants else None,
+            }
+
+        if re.search(r"\bwatch\b", text):
+            family = "Watch"
+
+            m2r = re.search(r"\bwatch\s*(\d+r)\b", text)
+            if m2r:
+                generation = m2r.group(1).upper()
+            else:
+                m = re.search(r"\bwatch\s*(\d+)\b", text)
+                if m:
+                    generation = m.group(1)
+
+            if re.search(r"\blite\b", text):
+                found_variants.append("Lite")
+
+        return {
+            "family": family,
+            "generation": generation,
+            "variant": " ".join(found_variants) if found_variants else None,
+        }
+    
+
+    @classmethod
+    def extract_oppo(cls, text: str) -> dict:
+        family = None
+        generation = None
+        found_variants = []
+
+        text = re.sub(r"\bwatchx(\d+)\b", r"watch x\1", text)
+        text = re.sub(r"\bwatch(\d+)\b", r"watch \1", text)
+
+        if re.search(r"\bwatch\s+free\b", text):
+            family = "Watch"
+            found_variants.append("Free")
+
+        elif re.search(r"\bwatch\s+se\b", text):
+            family = "Watch"
+            found_variants.append("SE")
+
+        elif re.search(r"\bwatch\s+s\b", text):
+            family = "Watch"
+            found_variants.append("S")
+
+        elif re.search(r"\bwatch\s+x\b", text) or re.search(r"\bwatch\s+x\d+\b", text):
+            family = "Watch"
+            found_variants.append("X")
+
+            m = re.search(r"\bwatch\s+x(\d+)\b", text)
+            if m:
+                generation = m.group(1)
+
+            if re.search(r"\bmini\b", text):
+                found_variants.append("Mini")
+
+        elif re.search(r"\bwatch\s*\d+\b", text):
+            family = "Watch"
+            m = re.search(r"\bwatch\s*(\d+)\b", text)
+            if m:
+                generation = m.group(1)
+
+            if re.search(r"\bpro\b", text):
+                found_variants.append("Pro")
+
+        elif re.search(r"\bwatch\b", text):
+            family = "Watch"
+
+        unique = []
+        for item in found_variants:
+            if item not in unique:
+                unique.append(item)
+
+        return {
+            "family": family,
+            "generation": generation,
+            "variant": " ".join(unique) if unique else None,
+        }
+    
+    @classmethod
+    def extract_vivo(cls, text: str) -> dict:
+        family = None
+        generation = None
+        variant = None
+
+        text = re.sub(r"\biqoowatch\b", "iqoo watch", text)
+        text = re.sub(r"\bwatch(\d+)\b", r"watch \1", text)
+
+        if re.search(r"\biqoo\s+watch\b", text):
+            family = "IQOO"
+
+            if re.search(r"\bgt\b", text):
+                variant = "GT"
+
+                m = re.search(r"\bgt\s*(\d+)\b", text)
+                if m:
+                    generation = m.group(1)
+
+            return {
+                "family": family,
+                "generation": generation,
+                "variant": variant,
+            }
+
+        if re.search(r"\bwatch\s+gt\b", text):
+            family = "Watch"
+            variant = "GT"
+
+            m = re.search(r"\bgt\s*(\d+)\b", text)
+            if m:
+                generation = m.group(1)
+
+            return {
+                "family": family,
+                "generation": generation,
+                "variant": variant,
+            }
+
+        if re.search(r"\bwatch\s*\d+\b", text):
+            family = "Watch"
+
+            m = re.search(r"\bwatch\s*(\d+)\b", text)
+            if m:
+                generation = m.group(1)
+
+            return {
+                "family": family,
+                "generation": generation,
+                "variant": None,
+            }
+
+        if re.search(r"\bwatch\b", text):
+            family = "Watch"
+
+        return {
+            "family": family,
+            "generation": generation,
+            "variant": variant,
+        }
+    
+
+    @classmethod
+    def extract_xiaomi(cls, text: str) -> dict:
+        family = None
+        generation = None
+        found_variants = []
+
+        text = re.sub(r"\bwatch(\d+)\b", r"watch \1", text)
+        text = re.sub(r"\bs(\d+)\b", r"s \1", text)
+        text = re.sub(r"\bh(\d+)\b", r"h \1", text)
+
+        if re.search(r"\bmi\s+watch\b", text):
+            family = "Mi"
+
+            if re.search(r"\blite\b", text):
+                found_variants.append("Lite")
+            if re.search(r"\brevolve\b", text):
+                found_variants.append("Revolve")
+            if re.search(r"\bactive\b", text):
+                found_variants.append("Active")
+            if re.search(r"\bcolor\b", text):
+                found_variants.append("Color")
+            if re.search(r"\bsports?\b", text):
+                found_variants.append("Sports")
+
+        elif re.search(r"\bpoco\s+watch\b", text):
+            family = "Poco"
+
+        elif re.search(r"\bredmi\s+watch\b", text):
+            family = "Redmi"
+
+            m = re.search(r"\bredmi\s+watch\s*(\d+)\b", text)
+            if m:
+                generation = m.group(1)
+
+            if re.search(r"\blite\b", text):
+                found_variants.append("Lite")
+            if re.search(r"\bactive\b", text):
+                found_variants.append("Active")
+            if re.search(r"\besim\b", text):
+                found_variants.append("eSIM")
+            if re.search(r"\bmove\b", text):
+                found_variants.append("Move")
+
+        elif re.search(r"\bwatch\s+color\b", text):
+            family = "Watch"
+            if re.search(r"\bcolor\s*2\b", text):
+                generation = "Color 2"
+            else:
+                generation = "Color"
+
+        elif re.search(r"\bwatch\s+h\b", text):
+            family = "Watch"
+            m = re.search(r"\bwatch\s+h\s*(\d+)\b", text)
+            if m:
+                generation = f"H{m.group(1)}"
+            if re.search(r"\be\b", text):
+                found_variants.append("E")
+
+        elif re.search(r"\bwatch\s+s\b", text):
+            family = "Watch"
+            m = re.search(r"\bwatch\s+s\s*(\d+)\b", text)
+            if m:
+                generation = f"S{m.group(1)}"
+            if re.search(r"\bactive\b", text):
+                found_variants.append("Active")
+            if re.search(r"\bpro\b", text):
+                found_variants.append("Pro")
+            if re.search(r"\bsport\b", text):
+                found_variants.append("Sport")
+
+        elif re.search(r"\bwatch\s*\d+\b", text):
+            family = "Watch"
+            m = re.search(r"\bwatch\s*(\d+)\b", text)
+            if m:
+                generation = m.group(1)
+            if re.search(r"\bpro\b", text):
+                found_variants.append("Pro")
+
+        elif re.search(r"\bwatch\b", text):
+            family = "Watch"
+
+        unique = []
+        for item in found_variants:
+            if item not in unique:
+                unique.append(item)
+
+        return {
+            "family": family,
+            "generation": generation,
+            "variant": " ".join(unique) if unique else None,
+        }

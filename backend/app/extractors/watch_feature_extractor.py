@@ -15,6 +15,11 @@ from app.extractors.brand_parsers.amazfit_parser import AmazfitParser
 from app.extractors.brand_parsers.google_parser import GoogleParser
 from app.extractors.brand_parsers.honor_parser import HonorParser
 from app.extractors.brand_parsers.huawei_parser import HuaweiParser
+from app.extractors.brand_parsers.motorola_parser import MotorolaParser
+from app.extractors.brand_parsers.oneplus_parser import OnePlusParser
+from app.extractors.brand_parsers.oppo_parser import OppoParser
+from app.extractors.brand_parsers.vivo_parser import VivoParser
+from app.extractors.brand_parsers.xiaomi_parser import XiaomiParser
 
 
 ACCESSORY_KEYWORDS = {
@@ -123,6 +128,22 @@ class WatchFeatureExtractor:
         
         if brand == "huawei":
             return HuaweiParser.parse(features)
+        
+        if brand == "motorola" or brand == "moto":
+            return MotorolaParser.parse(features)
+        
+        if brand == "oneplus" or brand == "one plus":
+            return OnePlusParser.parse(features)
+        
+        if brand == "oppo":
+            return OppoParser.parse(features)
+        
+        if brand == "vivo" or brand == "iqoo":
+            return VivoParser.parse(features)
+        
+        if brand == "xiaomi" or brand == "redmi" or brand == "poco":
+            return XiaomiParser.parse(features)
+
 
         return features
 
