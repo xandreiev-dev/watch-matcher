@@ -34,6 +34,8 @@ npm run dev
 ### Frontend:
 http://localhost:5173
 
+### SSH
+ssh -L 3306:localhost:3306 dan@95.216.3.50
 ---
 
 ## Принятые решения

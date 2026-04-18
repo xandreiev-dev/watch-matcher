@@ -1,6 +1,3 @@
-from pydoc import text
-from pyexpat import features
-
 from app.schemas.watch_features import WatchFeatures
 from app.services.extraction_service import ExtractionService
 from app.extractors.size_extractor import SizeExtractor
@@ -14,7 +11,6 @@ from app.extractors.brand_parsers.huawei_parser import HuaweiParser
 from app.extractors.brand_parsers.amazfit_parser import AmazfitParser
 from app.extractors.brand_parsers.google_parser import GoogleParser
 from app.extractors.brand_parsers.honor_parser import HonorParser
-from app.extractors.brand_parsers.huawei_parser import HuaweiParser
 from app.extractors.brand_parsers.motorola_parser import MotorolaParser
 from app.extractors.brand_parsers.oneplus_parser import OnePlusParser
 from app.extractors.brand_parsers.oppo_parser import OppoParser

@@ -76,21 +76,12 @@ class WatchMatcher:
         ]
 
         if not brand_rows:
-            print("==== FIND_MODEL DEBUG ====")
-            print("NO BRAND ROWS FOR:", features.brand)
-            print("==========================")
             return None
-
-        print("==== FIND_MODEL DEBUG ====")
-        print("BRAND:", features.brand)
-        print("MODEL_CANDIDATES:", features.model_candidates)
 
         matches: list[tuple[int, int, dict, str, set[str]]] = []
 
         for candidate in features.model_candidates:
             candidate_keys = cls.build_model_key_variants(candidate)
-            print("CANDIDATE:", candidate)
-            print("CANDIDATE_KEYS:", candidate_keys)
 
             candidate_norm = cls.normalize_model_key(candidate)
 
@@ -126,18 +117,11 @@ class WatchMatcher:
                 matches.append((score, len(model_norm), row, model_text, intersection))
 
         if not matches:
-            print("NO MODEL MATCH FOUND")
-            print("==========================")
             return None
 
         matches.sort(key=lambda x: (x[0], x[1]), reverse=True)
 
         best_score, _, best_row, best_model_text, best_intersection = matches[0]
-
-        print("BEST MATCH:", best_model_text)
-        print("BEST SCORE:", best_score)
-        print("BEST INTERSECTION:", best_intersection)
-        print("==========================")
 
         return best_row
 

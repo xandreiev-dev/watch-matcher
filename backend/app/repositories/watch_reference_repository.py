@@ -53,21 +53,19 @@ class WatchReferenceRepository:
         query = """
             SELECT
                 wv.id,
-                wv.watch_model_id,
+                wv.watch_model_id AS model_id,
                 wm.brand,
                 wm.model_name,
-                wm.normalized_name,
+                wm.normalized_name AS model_normalized_name,
                 wv.variant_name,
+                wv.variant_name AS normalized_variant_name,
                 wv.case_size_mm,
                 wv.case_material,
                 wv.connectivity_type,
                 wv.case_material_key,
                 wv.connectivity_key
             FROM g_watch_variant wv
-            JOIN g_watch_model wm
-                ON wm.id = wv.watch_model_id
-            WHERE wm.brand IS NOT NULL
-            AND wm.model_name IS NOT NULL
+            JOIN g_watch_model wm ON wm.id = wv.watch_model_id
         """
 
         connection = get_db_connection()
@@ -83,21 +81,20 @@ class WatchReferenceRepository:
         query = """
             SELECT
                 wv.id,
-                wv.watch_model_id,
+                wv.watch_model_id AS model_id,
                 wm.brand,
                 wm.model_name,
-                wm.normalized_name,
+                wm.normalized_name AS model_normalized_name,
                 wv.variant_name,
+                wv.variant_name AS normalized_variant_name,
                 wv.case_size_mm,
                 wv.case_material,
                 wv.connectivity_type,
                 wv.case_material_key,
                 wv.connectivity_key
             FROM g_watch_variant wv
-            JOIN g_watch_model wm
-                ON wm.id = wv.watch_model_id
+            JOIN g_watch_model wm ON wm.id = wv.watch_model_id
             WHERE LOWER(wm.brand) = LOWER(%s)
-            AND wm.model_name IS NOT NULL
         """
 
         connection = get_db_connection()
