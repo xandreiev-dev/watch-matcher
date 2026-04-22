@@ -19,8 +19,13 @@ class ModelCandidateBuilder:
         r"\boneplus\b",
         r"\bhonor\b",
         r"\bxiaomi\b",
+        r"\bredmi\b",
+        r"\bpoco\b",
         r"\boppo\b",
         r"\bmotorola\b",
+        r"\bmoto\b",
+        r"\bvivo\b",
+        r"\biqoo\b",
         r"\bрусский язык\b",
         r"\bрусский\b",
         r"\bрф\b",
@@ -61,7 +66,7 @@ class ModelCandidateBuilder:
 
     @classmethod
     def extract_material(cls, text: str) -> str | None:
-        lowered = text.lower()
+        lowered = (text or "").lower()
         for normalized, aliases in cls.MATERIAL_ALIASES.items():
             if any(alias in lowered for alias in aliases):
                 return normalized
@@ -69,7 +74,7 @@ class ModelCandidateBuilder:
 
     @classmethod
     def extract_connectivity(cls, text: str) -> str | None:
-        lowered = text.lower()
+        lowered = (text or "").lower()
 
         if any(alias in lowered for alias in cls.CONNECTIVITY_ALIASES["lte"]):
             return "lte"
@@ -102,6 +107,27 @@ class ModelCandidateBuilder:
         if brand_lower == "google":
             return cls.build_google_candidates(text)
 
+        if brand_lower == "amazfit":
+            return cls.build_amazfit_candidates(text)
+
+        if brand_lower == "xiaomi":
+            return cls.build_xiaomi_candidates(text)
+
+        if brand_lower == "oppo":
+            return cls.build_oppo_candidates(text)
+
+        if brand_lower == "oneplus":
+            return cls.build_oneplus_candidates(text)
+
+        if brand_lower == "vivo":
+            return cls.build_vivo_candidates(text)
+
+        if brand_lower == "motorola":
+            return cls.build_motorola_candidates(text)
+
+        if brand_lower == "honor":
+            return cls.build_honor_candidates(text)
+
         return []
 
     @classmethod
@@ -121,7 +147,6 @@ class ModelCandidateBuilder:
 
         if m := re.search(r"\bwatch\s+d\s*(\d+)\b", text):
             candidates.append(f"watch d{m.group(1)}")
-
         elif re.search(r"\bwatch\s+d\b", text):
             candidates.append("watch d")
 
@@ -233,6 +258,10 @@ class ModelCandidateBuilder:
             if m := re.search(pattern, text):
                 candidates.append(m.group(1).strip())
 
+        # postprocess fallback: 265 forerunner -> forerunner 265
+        if m := re.search(r"\b(\d+\w?)\s+(forerunner)\b", text):
+            candidates.append(f"{m.group(2)} {m.group(1)}")
+
         return cls.unique(candidates)
 
     # ---------------- GOOGLE ----------------
@@ -245,5 +274,209 @@ class ModelCandidateBuilder:
             if m.group(1):
                 candidates.append(f"pixel watch {m.group(1)}")
             candidates.append("pixel watch")
+
+        return cls.unique(candidates)
+
+    # ---------------- AMAZFIT ----------------
+
+    @classmethod
+    def build_amazfit_candidates(cls, text: str) -> list[str]:
+        candidates: list[str] = []
+
+        amazfit_patterns = [
+            r"\b(active\s+\d+\s+square)\b",
+            r"\b(active\s+edge)\b",
+            r"\b(active\s+\d+)\b",
+            r"\b(active)\b",
+
+            r"\b(balance\s+\d+)\b",
+            r"\b(balance)\b",
+
+            r"\b(bip\s+\d+\s+pro)\b",
+            r"\b(bip\s+\d+\s+lite)\b",
+            r"\b(bip\s+\d+)\b",
+            r"\b(bip)\b",
+
+            r"\b(cheetah\s+pro)\b",
+            r"\b(cheetah\s+square)\b",
+            r"\b(cheetah)\b",
+
+            r"\b(falcon)\b",
+
+            r"\b(gtr\s+\d+\s+limited edition)\b",
+            r"\b(gtr\s+mini)\b",
+            r"\b(gtr\s+\d+)\b",
+            r"\b(gtr)\b",
+
+            r"\b(gts\s+\d+\s+mini)\b",
+            r"\b(gts\s+\d+)\b",
+            r"\b(gts)\b",
+
+            r"\b(t\s?rex\s+ultra)\b",
+            r"\b(t\s?rex\s+\d+\s+pro)\b",
+            r"\b(t\s?rex\s+\d+)\b",
+            r"\b(t\s?rex)\b",
+        ]
+
+        for pattern in amazfit_patterns:
+            if m := re.search(pattern, text):
+                value = m.group(1).replace("t rex", "t-rex").replace("t  rex", "t-rex")
+                candidates.append(value.strip())
+
+        return cls.unique(candidates)
+
+    # ---------------- XIAOMI ----------------
+
+    @classmethod
+    def build_xiaomi_candidates(cls, text: str) -> list[str]:
+        candidates: list[str] = []
+
+        patterns = [
+            r"\b(mi\s+watch\s+color\s+sports)\b",
+            r"\b(mi\s+watch\s+lite)\b",
+            r"\b(mi\s+watch\s+revolve\s+active)\b",
+            r"\b(mi\s+watch\s+revolve)\b",
+            r"\b(mi\s+watch)\b",
+
+            r"\b(poco\s+watch)\b",
+
+            r"\b(redmi\s+watch\s+move)\b",
+            r"\b(redmi\s+watch\s+\d+\s+active)\b",
+            r"\b(redmi\s+watch\s+\d+\s+esim)\b",
+            r"\b(redmi\s+watch\s+\d+\s+lite)\b",
+            r"\b(redmi\s+watch\s+\d+)\b",
+            r"\b(redmi\s+watch)\b",
+
+            r"\b(watch\s+color\s+2)\b",
+            r"\b(watch\s+color)\b",
+            r"\b(watch\s+h1\s+e)\b",
+            r"\b(watch\s+h1)\b",
+            r"\b(watch\s+s1\s+active)\b",
+            r"\b(watch\s+s1\s+pro)\b",
+            r"\b(watch\s+s1)\b",
+            r"\b(watch\s+s2)\b",
+            r"\b(watch\s+s3)\b",
+            r"\b(watch\s+s4\s+sport)\b",
+            r"\b(watch\s+s4)\b",
+            r"\b(watch\s+\d+\s+pro)\b",
+            r"\b(watch\s+\d+)\b",
+        ]
+
+        for pattern in patterns:
+            if m := re.search(pattern, text):
+                candidates.append(m.group(1).strip())
+
+        return cls.unique(candidates)
+
+    # ---------------- OPPO ----------------
+
+    @classmethod
+    def build_oppo_candidates(cls, text: str) -> list[str]:
+        candidates: list[str] = []
+
+        patterns = [
+            r"\b(watch\s+free)\b",
+            r"\b(watch\s+se)\b",
+            r"\b(watch\s+s)\b",
+            r"\b(watch\s+x\d+\s+mini)\b",
+            r"\b(watch\s+x\d+)\b",
+            r"\b(watch\s+x)\b",
+            r"\b(watch\s+\d+\s+pro)\b",
+            r"\b(watch\s+\d+)\b",
+            r"\b(watch)\b",
+        ]
+
+        for pattern in patterns:
+            if m := re.search(pattern, text):
+                candidates.append(m.group(1).strip())
+
+        return cls.unique(candidates)
+
+    # ---------------- ONEPLUS ----------------
+
+    @classmethod
+    def build_oneplus_candidates(cls, text: str) -> list[str]:
+        candidates: list[str] = []
+
+        patterns = [
+            r"\b(nord\s+watch)\b",
+            r"\b(watch\s+\d+r)\b",
+            r"\b(watch\s+\d+\s+lite)\b",
+            r"\b(watch\s+\d+)\b",
+            r"\b(watch\s+lite)\b",
+            r"\b(watch)\b",
+        ]
+
+        for pattern in patterns:
+            if m := re.search(pattern, text):
+                candidates.append(m.group(1).strip())
+
+        return cls.unique(candidates)
+
+    # ---------------- VIVO ----------------
+
+    @classmethod
+    def build_vivo_candidates(cls, text: str) -> list[str]:
+        candidates: list[str] = []
+
+        patterns = [
+            r"\b(iqoo\s+watch\s+gt\s+\d+)\b",
+            r"\b(iqoo\s+watch\s+gt)\b",
+            r"\b(iqoo\s+watch)\b",
+            r"\b(watch\s+gt\s+\d+)\b",
+            r"\b(watch\s+gt)\b",
+            r"\b(watch\s+\d+)\b",
+            r"\b(watch)\b",
+        ]
+
+        for pattern in patterns:
+            if m := re.search(pattern, text):
+                candidates.append(m.group(1).strip())
+
+        return cls.unique(candidates)
+
+    # ---------------- MOTOROLA ----------------
+
+    @classmethod
+    def build_motorola_candidates(cls, text: str) -> list[str]:
+        candidates: list[str] = []
+
+        patterns = [
+            r"\b(moto\s+watch\s+fit)\b",
+            r"\b(moto\s+watch\s+\d+)\b",
+            r"\b(moto\s+watch)\b",
+        ]
+
+        for pattern in patterns:
+            if m := re.search(pattern, text):
+                candidates.append(m.group(1).strip())
+
+        return cls.unique(candidates)
+
+    # ---------------- HONOR ----------------
+
+    @classmethod
+    def build_honor_candidates(cls, text: str) -> list[str]:
+        candidates: list[str] = []
+
+        patterns = [
+            r"\b(choice\s+watch\s+\d+i)\b",
+            r"\b(choice\s+watch\s+\d+\s+pro)\b",
+            r"\b(choice\s+watch)\b",
+            r"\b(magicwatch\s+\d+)\b",
+            r"\b(watch\s+gs\s+pro)\b",
+            r"\b(watch\s+gs\s+\d+)\b",
+            r"\b(watch\s+fit)\b",
+            r"\b(watch\s+es)\b",
+            r"\b(watch\s+x\d+i)\b",
+            r"\b(watch\s+x\d+)\b",
+            r"\b(watch\s+\d+\s+ultra)\b",
+            r"\b(watch\s+\d+\s+pro)\b",
+            r"\b(watch\s+\d+)\b",
+        ]
+
+        for pattern in patterns:
+            if m := re.search(pattern, text):
+                candidates.append(m.group(1).strip())
 
         return cls.unique(candidates)

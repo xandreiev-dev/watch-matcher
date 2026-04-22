@@ -1,7 +1,6 @@
 from io import BytesIO
 import requests
 import pandas as pd
-from fastapi import UploadFile
 
 from app.core.constants import REQUIRED_COLUMNS, PREVIEW_ROWS_COUNT
 

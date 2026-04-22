@@ -78,52 +78,36 @@ class WatchMatcher:
         if not brand_rows:
             return None
 
-        matches: list[tuple[int, int, dict, str, set[str]]] = []
+        candidate_keys = set()
+        for candidate in features.model_candidates or []:
+            candidate_keys.update(cls.build_model_key_variants(candidate))
 
-        for candidate in features.model_candidates:
-            candidate_keys = cls.build_model_key_variants(candidate)
-
-            candidate_norm = cls.normalize_model_key(candidate)
-
-            for row in brand_rows:
-                model_text = row.get("normalized_name") or row.get("model_name") or row.get("name") or ""
-                model_keys = cls.build_model_key_variants(model_text)
-                model_norm = cls.normalize_model_key(model_text)
-
-                intersection = candidate_keys & model_keys
-                if not intersection:
-                    continue
-
-                score = 0
-
-                # 1. Полное точное совпадение — самый высокий приоритет
-                if candidate_norm == model_norm:
-                    score += 1000
-
-                # 2. Совпадение по одному из ключей
-                longest_key = max((len(x) for x in intersection), default=0)
-                score += longest_key * 10
-
-                # 3. Чем длиннее сама модель, тем она специфичнее
-                score += len(model_norm)
-
-                # 4. Штраф за слишком общие модели
-                if model_norm in {"watch", "watch gt", "watch fit"}:
-                    score -= 200
-
-                if model_norm == "watch d":
-                    score -= 100
-
-                matches.append((score, len(model_norm), row, model_text, intersection))
-
-        if not matches:
+        if not candidate_keys:
             return None
 
-        matches.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        exact_matches = []
 
-        best_score, _, best_row, best_model_text, best_intersection = matches[0]
+        for row in brand_rows:
+            model_text = row.get("normalized_name") or row.get("model_name") or row.get("name")
+            model_keys = cls.build_model_key_variants(model_text)
 
-        return best_row
+            if candidate_keys & model_keys:
+                exact_matches.append(row)
+
+        if len(exact_matches) == 1:
+            return exact_matches[0]
+
+        # если совпадений несколько — берем самую длинную нормализованную модель
+        if len(exact_matches) > 1:
+            exact_matches.sort(
+                key=lambda x: len(cls.normalize_model_key(
+                    x.get("normalized_name") or x.get("model_name") or x.get("name")
+                )),
+                reverse=True
+            )
+            return exact_matches[0]
+
+        return None
 
     @classmethod
     def find_variant(

@@ -135,7 +135,7 @@ function normalizeRowForExport(row) {
   return {
     "Название": row["Название"] ?? "",
     "Бренд": row["Бренд"] ?? "",
-    "Модель": row["Модель"] ?? "",
+    Модель: row.display_model ?? "",
     "article": row["article"] ?? "",
     "size_mm": row["size_mm"] ?? "",
     "family": row["family"] ?? "",

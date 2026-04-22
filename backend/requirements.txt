@@ -1,9 +1,0 @@
-fastapi
-uvicorn
-pandas
-openpyxl
-httpx
-python-multipart
-rapidfuzz
-pydantic
-requests

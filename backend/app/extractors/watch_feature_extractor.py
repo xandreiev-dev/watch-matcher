@@ -63,19 +63,18 @@ class WatchFeatureExtractor:
             is_multi_model=is_multi_model,
         )
 
-        # 1. Сначала брендовый parser
+        # Сначала брендовый parser
         features = cls.apply_brand_parser(features)
 
-        # 2. Если брендовый parser НЕ заполнил model_candidates,
-        #    только тогда fallback через общий builder
+        # Fallback на общий builder только если parser не дал model_candidates
         if not features.model_candidates:
             features.model_candidates = ModelCandidateBuilder.build(
                 features.brand,
                 features.normalized_title,
             )
 
-        # 3. Если брендовый parser НЕ заполнил material/connectivity,
-        #    только тогда fallback через общий builder
+        # Если брендовый parser НЕ заполнил material/connectivity,
+        # только тогда fallback через общий builder
         if not features.extracted_material:
             features.extracted_material = ModelCandidateBuilder.extract_material(
                 features.normalized_title,
@@ -86,8 +85,8 @@ class WatchFeatureExtractor:
                 features.normalized_title,
             )
 
-        # 4. Если брендовый parser НЕ собрал extracted_variant_name,
-        #    только тогда строим общий fallback
+        # Если брендовый parser НЕ собрал extracted_variant_name,
+        # только тогда строим общий fallback
         if not features.extracted_variant_name:
             features.extracted_variant_name = cls.build_variant_name(
                 size_mm=features.size_mm,
@@ -116,28 +115,25 @@ class WatchFeatureExtractor:
         if brand == "amazfit":
             return AmazfitParser.parse(features)
         
-        if brand == "google" or brand == "pixel":
+        if brand == "google":
             return GoogleParser.parse(features)
         
         if brand == "honor":
             return HonorParser.parse(features)
         
-        if brand == "huawei":
-            return HuaweiParser.parse(features)
-        
-        if brand == "motorola" or brand == "moto":
+        if brand == "motorola":
             return MotorolaParser.parse(features)
         
-        if brand == "oneplus" or brand == "one plus":
+        if brand == "oneplus":
             return OnePlusParser.parse(features)
         
         if brand == "oppo":
             return OppoParser.parse(features)
         
-        if brand == "vivo" or brand == "iqoo":
+        if brand == "vivo":
             return VivoParser.parse(features)
         
-        if brand == "xiaomi" or brand == "redmi" or brand == "poco":
+        if brand == "xiaomi":
             return XiaomiParser.parse(features)
 
 

@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.core.constants import EXTRACTION_PREVIEW_ROWS_COUNT
@@ -6,8 +8,38 @@ from app.services.watch_preprocess_service import WatchPreprocessService
 from app.extractors.watch_feature_extractor import WatchFeatureExtractor
 from app.matchers.watch_matcher import WatchMatcher
 from app.catalog.watch_reference_catalog import WatchReferenceCatalog
+from app.services.unmatched_postprocess_service import UnmatchedPostprocessService
+from app.schemas.watch_features import WatchFeatures
+from app.services.export_preview import WatchPreviewExporter
+from app.services.watch_db_writer_service import WatchDbWriterService
 
 router = APIRouter()
+
+
+def build_display_model(
+    matched_model_name: str | None,
+    family: str | None,
+    generation: str | None,
+    variant: str | None,
+    model_candidates: list[str] | None,
+) -> str | None:
+    if matched_model_name:
+        return matched_model_name
+
+    if model_candidates:
+        for candidate in model_candidates:
+            if candidate:
+                return candidate
+
+    parts = []
+    if family:
+        parts.append(str(family))
+    if generation:
+        parts.append(str(generation))
+    if variant:
+        parts.append(str(variant))
+
+    return " ".join(parts) if parts else None
 
 
 def process_watch_row(
@@ -21,10 +53,9 @@ def process_watch_row(
         title=preprocessed.product_name,
         description=preprocessed.description,
         brand=preprocessed.brand,
-        
     )
 
-    # preprocess остаётся источником правды по базовым полям
+    # preprocess остаётся источником правды по бренду, size и флагам
     features.brand = preprocessed.brand
     features.size_mm = preprocessed.size_mm
     features.is_accessory = preprocessed.is_accessory
@@ -36,12 +67,52 @@ def process_watch_row(
         variants_catalog=variants_catalog,
     )
 
+    # постобработка только для unmatched
+    if match_result.match_status == "unmatched":
+        post = UnmatchedPostprocessService.apply(
+            title=preprocessed.product_name,
+            brand=preprocessed.brand,
+        )
+
+        if post["changed"]:
+            post_features = WatchFeatures(
+                product_name=preprocessed.product_name,
+                normalized_title=post["normalized_title"],
+                brand=post["brand"],
+                size_mm=preprocessed.size_mm,
+                all_sizes_mm=preprocessed.all_sizes_mm,
+                color=features.color,
+                warranty_period=features.warranty_period,
+                is_accessory=preprocessed.is_accessory,
+                is_multi_model=preprocessed.is_multi_model,
+            )
+
+            post_features = WatchFeatureExtractor.apply_brand_parser(post_features)
+
+            post_match_result = WatchMatcher.match(
+                features=post_features,
+                models_catalog=models_catalog,
+                variants_catalog=variants_catalog,
+            )
+
+            if post_match_result.match_status == "matched":
+                features = post_features
+                match_result = post_match_result
+
     if match_result.match_status == "ambiguous_multi_model":
         features.is_multi_model = True
         features.size_mm = None
         features.family = None
         features.generation = None
         features.variant = None
+
+    display_model = build_display_model(
+        matched_model_name=match_result.matched_model_name,
+        family=features.family,
+        generation=features.generation,
+        variant=features.variant,
+        model_candidates=features.model_candidates,
+    )
 
     return {
         "Название": preprocessed.product_name,
@@ -67,6 +138,7 @@ def process_watch_row(
         "image_url": preprocessed.image_url,
         "shop_rating": preprocessed.shop_rating,
         "price": preprocessed.price,
+        "currency": "RUB",
         "match_status": match_result.match_status,
         "matched_variant_id": match_result.matched_variant_id,
         "matched_variant_name": match_result.matched_variant_name,
@@ -75,16 +147,72 @@ def process_watch_row(
         "match_method": match_result.match_method,
         "confidence": match_result.confidence,
         "needs_manual_review": match_result.needs_manual_review,
+        "rating": row.get("Звезды"),
+        "review": row.get("Отзывы"),
+        "days_to_delivery": row.get("Доставка"),
+        "display_model": display_model,
     }
+
+
+def build_stats(rows: list[dict]) -> dict:
+    total_rows = len(rows)
+    matched_rows = sum(1 for row in rows if row.get("match_status") == "matched")
+    unmatched_rows = total_rows - matched_rows
+
+    return {
+        "total_rows": total_rows,
+        "matched_rows": matched_rows,
+        "unmatched_rows": unmatched_rows,
+    }
+
+def build_process_logs(result: list[dict], resolved_is_new: bool) -> None:
+    total = len(result)
+    matched = sum(1 for row in result if row.get("match_status") == "matched")
+    unmatched = total - matched
+
+    print(
+        f"[PIPELINE] total={total} | matched={matched} | "
+        f"unmatched={unmatched} | type={'NEW' if resolved_is_new else 'USED'}"
+    )
+
+def resolve_is_new(
+    source_name: str,
+    is_new_raw: str | None,
+) -> bool:
+    """
+    Приоритет:
+    1. если is_new явно пришел с фронта -> используем его
+    2. иначе пытаемся понять по имени файла
+    3. если не удалось -> по умолчанию True
+    """
+    if is_new_raw is not None:
+        value = str(is_new_raw).strip().lower()
+        if value in {"true", "1", "yes", "new"}:
+            return True
+        if value in {"false", "0", "no", "old", "used"}:
+            return False
+
+    name = (source_name or "").strip().lower()
+
+    if "_old.xlsx" in name or "_used.xlsx" in name or "old.xlsx" in name or "used.xlsx" in name:
+        return False
+
+    if "_new.xlsx" in name or "new.xlsx" in name:
+        return True
+
+    return True
 
 
 @router.post("/preview")
 async def process_preview(
     file: UploadFile | None = File(None),
     file_url: str | None = Form(""),
+    is_new: str | None = Form(None),
 ):
     try:
         dataframe, source_name = await get_dataframe_from_input(file, file_url)
+        resolved_is_new = resolve_is_new(source_name, is_new)
+
         ExcelService.validate_columns(dataframe)
 
         preview_df = dataframe.head(EXTRACTION_PREVIEW_ROWS_COUNT).copy()
@@ -98,9 +226,19 @@ async def process_preview(
             row_dict = row.to_dict()
             result.append(process_watch_row(row_dict, models_catalog, variants_catalog))
 
+        build_process_logs(result, resolved_is_new)
+
+        output_file = WatchPreviewExporter.export(
+            result,
+            is_new=resolved_is_new,
+        )
+
         return {
             "filename": source_name,
+            "is_new": resolved_is_new,
+            "preview_file": output_file,
             "preview": result,
+            "stats": build_stats(result),
         }
 
     except ValueError as exc:
@@ -116,9 +254,13 @@ async def process_preview(
 async def process_file(
     file: UploadFile | None = File(None),
     file_url: str | None = Form(""),
+    is_new: str | None = Form(None),
+    write_to_db: bool = Form(True),
 ):
     try:
         dataframe, source_name = await get_dataframe_from_input(file, file_url)
+        resolved_is_new = resolve_is_new(source_name, is_new)
+
         ExcelService.validate_columns(dataframe)
 
         processed_df = dataframe.copy()
@@ -132,9 +274,42 @@ async def process_file(
             row_dict = row.to_dict()
             result.append(process_watch_row(row_dict, models_catalog, variants_catalog))
 
+        build_process_logs(result, resolved_is_new)
+
+        output_file = WatchPreviewExporter.export(
+            result,
+            is_new=resolved_is_new,
+        )
+
+        if write_to_db:
+            import time
+            import pandas as pd
+
+            start_time = time.time()
+            print(
+                f"[DB] Start writing to DB | is_new={resolved_is_new} | rows={len(result)}"
+            )
+
+            result_df = pd.DataFrame(result)
+
+            WatchDbWriterService.prepare_and_write_watch_data_to_db(
+                df_res=result_df,
+                actual_date=date.today(),
+                shop_id=2,
+                is_new=resolved_is_new,
+            )
+
+            duration = round(time.time() - start_time, 2)
+            print(
+                f"[DB] Finished | is_new={resolved_is_new} | rows={len(result)} | time={duration}s"
+            )
+
         return {
             "filename": source_name,
-            "total_rows": len(result),
+            "is_new": resolved_is_new,
+            "output_file": output_file,
+            "db_written": write_to_db,
+            "stats": build_stats(result),
             "data": result,
         }
 

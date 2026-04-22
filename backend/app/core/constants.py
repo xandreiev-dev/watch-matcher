@@ -14,33 +14,6 @@ OPTIONAL_OUTPUT_COLUMNS = [
 PREVIEW_ROWS_COUNT = 5
 EXTRACTION_PREVIEW_ROWS_COUNT = 20
 
-COMMON_BRANDS = [
-    "Apple",
-    "Samsung",
-    "Xiaomi",
-    "Huawei",
-    "Honor",
-    "Motorola",
-    "Google",
-    "OnePlus",
-    "Vivo",
-    "OPPO",
-    "Realme",
-]
-
-BRAND_ALIASES = {
-    "apple": "Apple",
-    "samsung": "Samsung",
-    "xiaomi": "Xiaomi",
-    "huawei": "Huawei",
-    "honor": "Honor",
-    "motorola": "Motorola",
-    "google": "Google",
-    "oneplus": "OnePlus",
-    "one plus": "OnePlus",
-    "vivo": "Vivo",
-}
-
 COLOR_MAP = {
     "black": "Black",
     "white": "White",
