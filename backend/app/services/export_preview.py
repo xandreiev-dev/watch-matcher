@@ -72,9 +72,10 @@ class WatchPreviewExporter:
 
         if output_file is None:
             suffix = "new" if is_new else "old"
-            output_file = f"avito_watch_{today}_{suffix}.xlsx"
+            output_file = f"output/avito_watch_{today}_{suffix}.xlsx"
 
         output_path = Path(output_file)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_excel(output_path, index=False)
 
         print(f"Preview saved to {output_path.resolve()}")
