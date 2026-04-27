@@ -5,6 +5,13 @@ from typing import Optional
 import pandas as pd
 
 from app.core.db import get_db_connection
+from app.core.logging_config import get_logger
+
+logger = get_logger("db_writer")
+
+MAX_WARRANTY_YEARS = 5
+MAX_WARRANTY_MONTHS = MAX_WARRANTY_YEARS * 12
+MAX_WARRANTY_DAYS = MAX_WARRANTY_YEARS * 365
 
 
 SHOP_NAMES = {
@@ -14,6 +21,16 @@ SHOP_NAMES = {
     4: "Яндекс",
     5: "Али",
 }
+
+
+def is_missing_value(value: object) -> bool:
+    if value is None:
+        return True
+
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
 
 
 def generate_insert_on_duplicate(table_name: str, columns: list[str]) -> str:
@@ -40,7 +57,7 @@ def bulk_insert(query: str, records: list[dict]) -> None:
     for record in records:
         cleaned = {}
         for key, value in record.items():
-            if pd.isna(value):
+            if is_missing_value(value):
                 cleaned[key] = None
             else:
                 cleaned[key] = value
@@ -141,28 +158,39 @@ class WatchDbWriterService:
             return None
 
     @classmethod
-    def convert_warranty_to_days(cls, value: object) -> int:
-        if pd.isna(value) or value is None:
-            return 0
+    def convert_warranty_to_days(cls, value: object) -> Optional[int]:
+        if is_missing_value(value):
+            return None
 
         text = str(value).lower().strip()
         if not text:
-            return 0
+            return None
 
-        match = re.search(r"(\d+)\s*(day|days|month|months)", text)
+        text = text.replace("ё", "е")
+
+        # Store only explicit warranty durations in days; mentions without a term stay NULL.
+        match = re.search(
+            r"(\d+)\s*"
+            r"(дн(?:ей|я)?|день|дня|дней|days?|"
+            r"мес(?:яц(?:ев|а)?)?|months?|"
+            r"год|года|лет|years?)",
+            text,
+        )
         if match:
             num = int(match.group(1))
             unit = match.group(2)
 
-            if "day" in unit:
-                return num
-            if "month" in unit:
-                return num * 30
+            if num <= 0:
+                return None
 
-        if "warranty mentioned" in text or "гаран" in text:
-            return 1
+            if unit.startswith("дн") or unit in {"день", "дня", "дней"} or "day" in unit:
+                return num if num <= MAX_WARRANTY_DAYS else None
+            if unit.startswith("мес") or "month" in unit:
+                return num * 30 if num <= MAX_WARRANTY_MONTHS else None
+            if unit.startswith("год") or unit == "лет" or "year" in unit:
+                return num * 365 if num <= MAX_WARRANTY_YEARS else None
 
-        return 0
+        return None
 
     @classmethod
     def convert_days_to_delivery(cls, value: object) -> Optional[int]:
@@ -193,13 +221,20 @@ class WatchDbWriterService:
     @classmethod
     def prepare_matched_rows(cls, df_res: pd.DataFrame) -> pd.DataFrame:
         df = df_res.copy()
+        start_count = len(df)
 
         df = df[df["match_status"] == "matched"].copy()
+        after_match_status = len(df)
         df = df[df["matched_model_name"].notna()].copy()
+        after_model_name = len(df)
         df = df[df["Бренд"].notna()].copy()
+        after_brand = len(df)
         df = df[df["article"].notna()].copy()
+        after_article = len(df)
         df = df[df["URL"].notna()].copy()
+        after_url = len(df)
         df = df[df["price"].notna()].copy()
+        after_price_present = len(df)
 
         df["brand"] = df["Бренд"].apply(cls.normalize_brand)
         df["model"] = df["matched_model_name"].apply(cls.normalize_model_for_db)
@@ -225,7 +260,7 @@ class WatchDbWriterService:
         if "Гарантия" in df.columns:
             df["warranty_period"] = df["Гарантия"].apply(cls.convert_warranty_to_days)
         else:
-            df["warranty_period"] = 0
+            df["warranty_period"] = None
 
         if "days_to_delivery" in df.columns:
             df["days_to_delivery"] = df["days_to_delivery"].apply(cls.convert_days_to_delivery)
@@ -248,27 +283,41 @@ class WatchDbWriterService:
         df["ali_affiliate_url"] = None
 
         df = df[df["brand"].notna() & (df["brand"] != "")]
+        after_normalized_brand = len(df)
         df = df[df["model"].notna() & (df["model"] != "")]
+        after_normalized_model = len(df)
         df = df[df["product_url"].notna() & (df["product_url"] != "")]
+        after_product_url = len(df)
         df = df[df["article"].notna() & (df["article"] != "")]
+        after_article_text = len(df)
         df = df[df["price"].notna()]
+        after_price_numeric = len(df)
 
         df = df[df.apply(lambda row: str(row["article"]) in str(row["product_url"]), axis=1)].copy()
+        after_article_in_url = len(df)
+
+        logger.info(
+            "[БД] prepare_matched_rows funnel: "
+            f"start={start_count} -> match_status={after_match_status} -> matched_model={after_model_name} "
+            f"-> brand={after_brand} -> article={after_article} -> url={after_url} "
+            f"-> price_present={after_price_present} -> normalized_brand={after_normalized_brand} "
+            f"-> normalized_model={after_normalized_model} -> product_url={after_product_url} "
+            f"-> article_text={after_article_text} -> price_numeric={after_price_numeric} "
+            f"-> article_in_url={after_article_in_url}"
+        )
 
         return df
 
     @classmethod
     def insert_g_watch(cls, df_ready: pd.DataFrame) -> None:
         df_watch = df_ready[["brand", "model", "size"]].drop_duplicates().copy()
-        df_watch["ram"] = None
-        df_watch["memory"] = None
 
         query = """
-        INSERT IGNORE INTO g_watch (brand, model, size, ram, memory)
-        VALUES (%(brand)s, %(model)s, %(size)s, %(ram)s, %(memory)s)
+        INSERT IGNORE INTO g_watch (brand, model, size)
+        VALUES (%(brand)s, %(model)s, %(size)s)
         """
 
-        columns = ["brand", "model", "size", "ram", "memory"]
+        columns = ["brand", "model", "size"]
 
         records = (
             df_watch[columns]
@@ -386,10 +435,10 @@ class WatchDbWriterService:
 
         bulk_insert(query, records)
 
-        print(
-            f"[DB] prices inserted: {len(records)} | "
-            f"shop={SHOP_NAMES.get(df_ready['shop_id'].iloc[0], 'unknown')} | "
-            f"type={'NEW' if is_new else 'USED'}"
+        logger.info(
+            f"[БД] цены записаны: {len(records)} | "
+            f"магазин={SHOP_NAMES.get(df_ready['shop_id'].iloc[0], 'неизвестно')} | "
+            f"тип={'НОВЫЕ' if is_new else 'БУ'}"
         )
 
     @classmethod
@@ -403,28 +452,28 @@ class WatchDbWriterService:
         cls.validate_input_columns(df_res)
         df_ready = cls.prepare_matched_rows(df_res)
 
-        print(f"[DB] matched after prepare: {len(df_ready)}")
+        logger.info(f"[БД] строк после подготовки: {len(df_ready)}")
 
         if df_ready.empty:
-            print("Нет строк для записи в БД")
+            logger.warning("Нет строк для записи в БД")
             return
 
         cls.insert_g_watch(df_ready)
         df_ready = cls.attach_watch_id(df_ready)
 
-        print(f"[DB] after attach_watch_id: {len(df_ready)}")
+        logger.info(f"[БД] строк после привязки идентификатора watch_id: {len(df_ready)}")
 
         if df_ready.empty:
-            print("После join с g_watch не осталось строк")
+            logger.warning("После объединения с g_watch не осталось строк")
             return
 
         cls.insert_g_shop_watch(df_ready, shop_id=shop_id)
         df_ready = cls.attach_shop_watch_id(df_ready, shop_id=shop_id)
 
-        print(f"[DB] after attach_shop_watch_id: {len(df_ready)}")
+        logger.info(f"[БД] строк после привязки идентификатора shop_watch_id: {len(df_ready)}")
 
         if df_ready.empty:
-            print("После join с g_shop_watch не осталось строк")
+            logger.warning("После объединения с g_shop_watch не осталось строк")
             return
 
         cls.insert_g_watch_price(
@@ -441,7 +490,7 @@ class WatchDbWriterService:
         actual_date: date,
         shop_id: int = 2,
     ) -> None:
-        print("=== WRITE NEW WATCHES ===")
+        logger.info("=== Запись НОВЫХ часов ===")
         cls.prepare_and_write_watch_data_to_db(
             df_res=df_new,
             actual_date=actual_date,
@@ -449,7 +498,7 @@ class WatchDbWriterService:
             is_new=True,
         )
 
-        print("=== WRITE USED WATCHES ===")
+        logger.info("=== Запись Б/У часов ===")
         cls.prepare_and_write_watch_data_to_db(
             df_res=df_used,
             actual_date=actual_date,

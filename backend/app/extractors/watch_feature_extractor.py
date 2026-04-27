@@ -43,7 +43,10 @@ class WatchFeatureExtractor:
         normalized_title = WatchTitleNormalizer.normalize(title)
 
         color = ExtractionService.extract_color(title, description)
-        warranty = ExtractionService.extract_warranty(description)
+        warranty = ExtractionService.extract_warranty(
+            title=title,
+            description=description,
+        )
 
         size_mm = SizeExtractor.extract_first_size_mm(title)
         all_sizes_mm = SizeExtractor.extract_all_sizes_mm(title)

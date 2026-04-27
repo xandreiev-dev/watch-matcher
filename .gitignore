@@ -30,3 +30,10 @@ Thumbs.db
 .env.*
 
 sample_data/
+
+# Generated/imported data
+*.xlsx
+*.xls
+.~lock.*
+backend/output/
+tmp/
