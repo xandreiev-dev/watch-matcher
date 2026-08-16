@@ -21,6 +21,8 @@ logger = get_logger("process")
 SHOP_ID_BY_SOURCE = {
     "ozon": 1,
     "avito": 2,
+    "wb": 3,
+    "dns": 6,
 }
 
 
@@ -45,7 +47,16 @@ def normalize_source(value: str | None) -> str | None:
         return "ozon"
     if normalized in {"avito", "avito.ru", "2"}:
         return "avito"
+    if normalized in {"wb", "wildberries", "wildberries.ru", "3"}:
+        return "wb"
+    if normalized in {"dns", "dns-shop", "dns-shop.ru", "6"}:
+        return "dns"
     return None
+
+
+def is_audit_conflict_filename(value: str | None) -> bool:
+    text = (value or "").strip().lower()
+    return "new_used_conflicts" in text or text.endswith("_conflicts.xlsx")
 
 
 def resolve_source_and_shop_id(
@@ -54,9 +65,9 @@ def resolve_source_and_shop_id(
     source_raw: str | None,
     shop_id_raw: int | None,
 ) -> tuple[str, int]:
-    if shop_id_raw in {1, 2}:
-        source = "ozon" if shop_id_raw == 1 else "avito"
-        return source, shop_id_raw
+    shop_id_to_source = {shop_id: source for source, shop_id in SHOP_ID_BY_SOURCE.items()}
+    if shop_id_raw in shop_id_to_source:
+        return shop_id_to_source[shop_id_raw], shop_id_raw
 
     explicit_source = normalize_source(source_raw)
     if explicit_source:
@@ -64,6 +75,26 @@ def resolve_source_and_shop_id(
 
     name = (source_name or "").strip().lower()
     columns = {str(column).strip().lower() for column in dataframe.columns}
+
+    source_column = next(
+        (column for column in dataframe.columns if str(column).strip().lower() == "source"),
+        None,
+    )
+    if source_column is not None:
+        source_values = dataframe[source_column].dropna().head(20).tolist()
+        for source_value in source_values:
+            detected_source = normalize_source(str(source_value))
+            if detected_source:
+                return detected_source, SHOP_ID_BY_SOURCE[detected_source]
+
+    if "wb" in name or "wildberries" in name:
+        return "wb", SHOP_ID_BY_SOURCE["wb"]
+
+    if (
+        "dns" in name
+        or {"product_id", "stock_status", "breadcrumbs"}.issubset(columns)
+    ):
+        return "dns", SHOP_ID_BY_SOURCE["dns"]
 
     if "ozon" in name or "source_brand" in columns or "tax_price" in columns:
         return "ozon", SHOP_ID_BY_SOURCE["ozon"]
@@ -95,6 +126,24 @@ def build_display_model(
         parts.append(str(variant))
 
     return " ".join(parts) if parts else None
+
+
+def build_warranty_value(features_warranty: str | None, row: dict):
+    if features_warranty:
+        return features_warranty
+
+    warranty = first_present(row, "warranty", "Гарантия")
+    if warranty:
+        return warranty
+
+    warranty_days = first_present(row, "warranty_days")
+    if warranty_days:
+        try:
+            return f"{int(float(warranty_days))} days"
+        except (TypeError, ValueError):
+            return warranty_days
+
+    return None
 
 
 def process_watch_row(
@@ -172,6 +221,7 @@ def process_watch_row(
 
     return {
         "Название": preprocessed.product_name,
+        "Описание": preprocessed.description,
         "normalized_title": preprocessed.normalized_title,
         "Бренд": preprocessed.brand,
         "brand_from_url": preprocessed.brand_from_url,
@@ -188,8 +238,8 @@ def process_watch_row(
         "extracted_material": features.extracted_material,
         "extracted_connectivity": features.extracted_connectivity,
         "extracted_variant_name": features.extracted_variant_name,
-        "Цвет": features.color,
-        "Гарантия": features.warranty_period,
+        "Цвет": features.color or first_present(row, "color", "Цвет"),
+        "Гарантия": build_warranty_value(features.warranty_period, row),
         "URL": preprocessed.product_url,
         "image_url": preprocessed.image_url,
         "shop_rating": preprocessed.shop_rating,
@@ -204,15 +254,20 @@ def process_watch_row(
         "confidence": match_result.confidence,
         "needs_manual_review": match_result.needs_manual_review,
         "rating": first_present(row, "Звезды", "rating"),
-        "review": first_present(row, "reviews_count", "Отзывы", "review"),
+        "review": first_present(row, "reviews_count", "reviews", "Отзывы", "review"),
         "days_to_delivery": (
-            first_present(row, "delivery_days", "delivery_date", "Доставка")
-            if source == "ozon"
+            first_present(row, "delivery_days")
+            if source in {"ozon", "dns", "wb"}
             else first_present(row, "Доставка", "delivery_days")
         ),
         "is_global": first_present(row, "is_global"),
         "tax_price": first_present(row, "tax_price"),
+        "shop_id": SHOP_ID_BY_SOURCE.get(source),
         "source": source,
+        "row_is_new": first_present(row, "is_new", "row_is_new"),
+        "avito_condition": first_present(row, "avito_condition"),
+        "condition_source": first_present(row, "condition_source"),
+        "fake_grade": first_present(row, "fake_grade"),
         "display_model": display_model,
     }
 
@@ -443,11 +498,22 @@ async def get_dataframe_from_input(file: UploadFile | None, file_url: str | None
                 status_code=400,
                 detail="Only .xlsx files are supported",
             )
+        if is_audit_conflict_filename(file.filename):
+            raise HTTPException(
+                status_code=400,
+                detail="Audit/conflict XLSX is not importable as product data",
+            )
 
         dataframe = await ExcelService.read_excel_file(file)
         source_name = file.filename
         logger.info(f"Входные данные загружены из файла: {source_name}")
         return dataframe, source_name
+
+    if is_audit_conflict_filename(file_url):
+        raise HTTPException(
+            status_code=400,
+            detail="Audit/conflict XLSX is not importable as product data",
+        )
 
     try:
         dataframe = ExcelService.read_excel_from_url(file_url)

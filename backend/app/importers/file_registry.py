@@ -41,7 +41,15 @@ def infer_is_new_from_filename(filename: str, default: bool = True) -> bool:
     return default
 
 
+def is_audit_conflict_file(filename: str) -> bool:
+    value = filename.lower()
+    return "new_used_conflicts" in value or value.endswith("_conflicts.xlsx")
+
+
 def file_matches_source(filename: str, source: str) -> bool:
+    if is_audit_conflict_file(filename):
+        return False
+
     value = filename.lower()
     source_value = source.lower()
 
@@ -49,6 +57,12 @@ def file_matches_source(filename: str, source: str) -> bool:
         return "ozon" in value
 
     if source_value == "avito":
-        return "avito" in value or "ozon" not in value
+        return "avito" in value
+
+    if source_value == "dns":
+        return "dns" in value
+
+    if source_value == "wb":
+        return "wb" in value or "wildberries" in value
 
     return source_value in value

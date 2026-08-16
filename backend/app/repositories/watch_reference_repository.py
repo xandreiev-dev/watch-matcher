@@ -63,7 +63,9 @@ class WatchReferenceRepository:
                 wv.case_material,
                 wv.connectivity_type,
                 wv.case_material_key,
-                wv.connectivity_key
+                wv.connectivity_key,
+                wv.quality_score,
+                wv.is_canonical
             FROM g_watch_variant wv
             JOIN g_watch_model wm ON wm.id = wv.watch_model_id
         """
@@ -91,7 +93,9 @@ class WatchReferenceRepository:
                 wv.case_material,
                 wv.connectivity_type,
                 wv.case_material_key,
-                wv.connectivity_key
+                wv.connectivity_key,
+                wv.quality_score,
+                wv.is_canonical
             FROM g_watch_variant wv
             JOIN g_watch_model wm ON wm.id = wv.watch_model_id
             WHERE LOWER(wm.brand) = LOWER(%s)

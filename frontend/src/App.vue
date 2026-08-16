@@ -2,58 +2,86 @@
   <div class="container">
     <FileUpload @processLoaded="handleProcessLoaded" />
 
-    <div v-if="processedRows.length" class="stats-bar">
-      <div class="stats-text">
-        <strong>Статистика:</strong>
-        всего {{ totalRows }} · совпало {{ matchedRows }} · не совпало {{ unmatchedRows }}
+    <section v-if="processedRows.length" class="summary-bar">
+      <div class="metric">
+        <span>Total</span>
+        <strong>{{ totalRows }}</strong>
       </div>
-
-      <div class="stats-actions">
-        <button @click="exportMatchedToExcel" class="export-btn green-btn">
-          Скачать matched.xlsx
-        </button>
-        <button @click="exportUnmatchedToExcel" class="export-btn green-btn">
-          Скачать unmatched.xlsx
-        </button>
+      <div class="metric">
+        <span>Matched</span>
+        <strong>{{ matchedRows }}</strong>
       </div>
-    </div>
+      <div class="metric">
+        <span>Unmatched</span>
+        <strong>{{ unmatchedRows }}</strong>
+      </div>
+      <div class="metric">
+        <span>Review</span>
+        <strong>{{ reviewRows }}</strong>
+      </div>
+      <div class="metric">
+        <span>Avg confidence</span>
+        <strong>{{ averageConfidence }}</strong>
+      </div>
+    </section>
 
-    <div v-if="processedRows.length" class="toolbar">
-      <div class="toolbar-group">
-        <label for="search">Поиск:</label>
+    <section v-if="processedRows.length" class="toolbar">
+      <label class="toolbar-field search-field">
+        <span>Search</span>
         <input
-          id="search"
           v-model="searchQuery"
           type="text"
-          placeholder="Поиск по названию, бренду, модели..."
+          placeholder="title, model, article, url"
           class="toolbar-input"
         />
-      </div>
+      </label>
 
-      <div class="toolbar-group">
-        <label for="filter">Фильтр:</label>
-        <select id="filter" v-model="filterMode" class="toolbar-select">
-          <option value="all">Все</option>
-          <option value="matched">Только matched</option>
-          <option value="unmatched">Только unmatched</option>
+      <label class="toolbar-field">
+        <span>Source</span>
+        <select v-model="sourceFilter" class="toolbar-select">
+          <option value="all">All</option>
+          <option v-for="source in sourceOptions" :key="source" :value="source">
+            {{ source }}
+          </option>
         </select>
-      </div>
+      </label>
 
-      <div class="toolbar-group">
-        <button @click="exportToExcel" class="export-btn">
-          Экспорт текущего вида в Excel
-        </button>
+      <label class="toolbar-field">
+        <span>Brand</span>
+        <select v-model="brandFilter" class="toolbar-select">
+          <option value="all">All</option>
+          <option v-for="brand in brandOptions" :key="brand" :value="brand">
+            {{ brand }}
+          </option>
+        </select>
+      </label>
+
+      <label class="toolbar-field">
+        <span>Status</span>
+        <select v-model="statusFilter" class="toolbar-select">
+          <option value="all">All</option>
+          <option v-for="status in statusOptions" :key="status" :value="status">
+            {{ status }}
+          </option>
+        </select>
+      </label>
+
+      <div class="export-actions">
+        <button @click="exportFullToExcel">Full</button>
+        <button @click="exportMatchedToExcel">Matched</button>
+        <button @click="exportUnmatchedToExcel">Unmatched</button>
+        <button @click="exportReviewToExcel">Review</button>
       </div>
-    </div>
+    </section>
 
     <ResultsTable
       v-if="filteredRows.length"
       :rows="filteredRows"
-      title="Результат обработки"
+      title="Matching Results"
     />
 
     <p v-else-if="processedRows.length" class="empty-state">
-      По текущему фильтру ничего не найдено.
+      По текущим фильтрам ничего не найдено.
     </p>
   </div>
 </template>
@@ -66,39 +94,85 @@ import ResultsTable from "./components/ResultsTable.vue";
 
 const processedRows = ref([]);
 const searchQuery = ref("");
-const filterMode = ref("all");
+const sourceFilter = ref("all");
+const brandFilter = ref("all");
+const statusFilter = ref("all");
 
 function handleProcessLoaded(payload) {
-  processedRows.value = payload?.data || [];
+  const rows = payload?.data || payload?.preview || [];
+  processedRows.value = rows.map((row) => ({
+    ...row,
+    source: row?.source || payload?.source,
+    shop_id: row?.shop_id ?? payload?.shop_id,
+  }));
   searchQuery.value = "";
-  filterMode.value = "all";
+  sourceFilter.value = "all";
+  brandFilter.value = "all";
+  statusFilter.value = "all";
+}
+
+function getBrand(row) {
+  return row?.brand || row?.["Бренд"] || "—";
+}
+
+function getSource(row) {
+  return row?.source || (Number(row?.shop_id) === 1 ? "ozon" : Number(row?.shop_id) === 2 ? "avito" : "—");
 }
 
 function isMatched(row) {
   return row?.match_status === "matched";
 }
 
-function isUnmatched(row) {
-  return row?.match_status !== "matched";
+function needsManualReview(row) {
+  return row?.needs_manual_review === true || row?.needs_manual_review === "true" || row?.needs_manual_review === 1;
+}
+
+function uniqueSorted(values) {
+  return [...new Set(values.filter((value) => value && value !== "—"))].sort((a, b) =>
+    String(a).localeCompare(String(b), "ru")
+  );
 }
 
 const totalRows = computed(() => processedRows.value.length);
 
-const matchedRows = computed(() =>
-  processedRows.value.filter((row) => isMatched(row)).length
-);
+const matchedRows = computed(() => processedRows.value.filter(isMatched).length);
 
-const unmatchedRows = computed(() =>
-  processedRows.value.filter((row) => isUnmatched(row)).length
+const unmatchedRows = computed(() => processedRows.value.filter((row) => !isMatched(row)).length);
+
+const reviewRows = computed(() => processedRows.value.filter(needsManualReview).length);
+
+const averageConfidence = computed(() => {
+  const values = processedRows.value
+    .map((row) => Number(row?.confidence))
+    .filter((value) => Number.isFinite(value));
+
+  if (!values.length) return "—";
+
+  const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return avg.toFixed(2);
+});
+
+const sourceOptions = computed(() => uniqueSorted(processedRows.value.map(getSource)));
+
+const brandOptions = computed(() => uniqueSorted(processedRows.value.map(getBrand)));
+
+const statusOptions = computed(() =>
+  uniqueSorted(processedRows.value.map((row) => row?.match_status || "unknown"))
 );
 
 const filteredRows = computed(() => {
   let rows = [...processedRows.value];
 
-  if (filterMode.value === "matched") {
-    rows = rows.filter((row) => isMatched(row));
-  } else if (filterMode.value === "unmatched") {
-    rows = rows.filter((row) => isUnmatched(row));
+  if (sourceFilter.value !== "all") {
+    rows = rows.filter((row) => getSource(row) === sourceFilter.value);
+  }
+
+  if (brandFilter.value !== "all") {
+    rows = rows.filter((row) => getBrand(row) === brandFilter.value);
+  }
+
+  if (statusFilter.value !== "all") {
+    rows = rows.filter((row) => (row?.match_status || "unknown") === statusFilter.value);
   }
 
   const query = searchQuery.value.trim().toLowerCase();
@@ -106,22 +180,23 @@ const filteredRows = computed(() => {
 
   return rows.filter((row) => {
     const haystack = [
-      row["Название"] || "",
-      row["Бренд"] || "",
-      row["Модель"] || "",
-      row["match_status"] || "",
-      row["matched_model_name"] || "",
-      row["matched_model_id"] ?? "",
-      row["family"] || "",
-      row["generation"] || "",
-      row["variant"] || "",
-      row["article"] || "",
-      row["Цвет"] || "",
-      row["Гарантия"] || "",
-      row["URL"] || "",
-      row["image_url"] || "",
-      row["img_url"] || "",
+      row?.["Название"],
+      row?.product_name,
+      row?.title,
+      row?.brand,
+      row?.["Бренд"],
+      row?.model,
+      row?.display_model,
+      row?.family,
+      row?.generation,
+      row?.variant,
+      row?.matched_model_name,
+      row?.matched_variant_name,
+      row?.article,
+      row?.URL,
+      row?.product_url,
     ]
+      .filter((value) => value !== null && value !== undefined)
       .join(" ")
       .toLowerCase();
 
@@ -130,54 +205,78 @@ const filteredRows = computed(() => {
 });
 
 function normalizeRowForExport(row) {
-  const imageUrl = row["image_url"] || row["img_url"] || "";
-
   return {
-    "Название": row["Название"] ?? "",
-    "Бренд": row["Бренд"] ?? "",
-    Модель: row.display_model ?? "",
-    "article": row["article"] ?? "",
-    "size_mm": row["size_mm"] ?? "",
-    "family": row["family"] ?? "",
-    "generation": row["generation"] ?? "",
-    "variant": row["variant"] ?? "",
-    "Цвет": row["Цвет"] ?? "",
-    "Гарантия": row["Гарантия"] ?? "",
-    "URL": row["URL"] ?? "",
-    "image_url": imageUrl,
-    "img_url": imageUrl,
-    "match_status": row["match_status"] ?? "",
-    "matched_model_id": row["matched_model_id"] ?? "",
-    "matched_model_name": row["matched_model_name"] ?? "",
-    "match_method": row["match_method"] ?? "",
-    "needs_manual_review": row["needs_manual_review"] ?? "",
+    shop_id: getShopId(row),
+    source: getSource(row),
+    brand: getBrand(row),
+    model: row?.model || row?.display_model || row?.matched_model_name || "",
+    variant: row?.variant || row?.matched_variant_name || row?.extracted_variant_name || "",
+    price: row?.price ?? "",
+    image_url: row?.image_url || row?.img_url || "",
+    match_status: row?.match_status || "",
+    matched_model_name: row?.matched_model_name || "",
+    matched_variant_name: row?.matched_variant_name || "",
+    case_size_mm: row?.case_size_mm ?? row?.size_mm ?? "",
+    delivery_days: getDeliveryDays(row),
+    warranty: row?.["Гарантия"] || row?.warranty || row?.warranty_period || "",
+    title: row?.["Название"] || row?.product_name || "",
+    article: row?.article ?? "",
+    url: row?.URL || row?.product_url || "",
+    confidence: row?.confidence ?? "",
+    matched_model_id: row?.matched_model_id ?? "",
+    matched_variant_id: row?.matched_variant_id ?? "",
+    needs_manual_review: row?.needs_manual_review ?? "",
   };
 }
 
 function exportRowsToExcel(rows, filename) {
   if (!rows.length) return;
 
-  const exportRows = rows.map(normalizeRowForExport);
-
-  const worksheet = XLSX.utils.json_to_sheet(exportRows);
+  const worksheet = XLSX.utils.json_to_sheet(rows.map(normalizeRowForExport));
   const workbook = XLSX.utils.book_new();
-
   XLSX.utils.book_append_sheet(workbook, worksheet, "Results");
   XLSX.writeFile(workbook, filename);
 }
 
-function exportToExcel() {
-  exportRowsToExcel(filteredRows.value, "watch_matcher_results.xlsx");
+function exportFullToExcel() {
+  exportRowsToExcel(processedRows.value, "watch_matcher_full.xlsx");
 }
 
 function exportMatchedToExcel() {
-  const matched = processedRows.value.filter((row) => isMatched(row));
-  exportRowsToExcel(matched, "matched.xlsx");
+  exportRowsToExcel(processedRows.value.filter(isMatched), "watch_matcher_matched.xlsx");
 }
 
 function exportUnmatchedToExcel() {
-  const unmatched = processedRows.value.filter((row) => isUnmatched(row));
-  exportRowsToExcel(unmatched, "unmatched.xlsx");
+  exportRowsToExcel(processedRows.value.filter((row) => !isMatched(row)), "watch_matcher_unmatched.xlsx");
+}
+
+function getShopId(row) {
+  if (row?.shop_id !== null && row?.shop_id !== undefined && row?.shop_id !== "") {
+    return row.shop_id;
+  }
+
+  const source = getSource(row);
+  if (source === "ozon") return 1;
+  if (source === "avito") return 2;
+
+  return "";
+}
+
+function getDeliveryDays(row) {
+  const value = row?.delivery_days ?? row?.days_to_delivery;
+  if (value === null || value === undefined || value === "") return "";
+
+  const text = String(value).trim();
+  if (!/^\d+([.,]\d+)?$/.test(text) && !/(день|дня|дней|day|days)/i.test(text)) {
+    return "";
+  }
+
+  const match = text.match(/\d+([.,]\d+)?/);
+  return match ? Math.round(Number(match[0].replace(",", "."))) : "";
+}
+
+function exportReviewToExcel() {
+  exportRowsToExcel(processedRows.value.filter(needsManualReview), "watch_matcher_review.xlsx");
 }
 </script>
 
@@ -185,86 +284,116 @@ function exportUnmatchedToExcel() {
 body {
   margin: 0;
   font-family: Arial, sans-serif;
-  background: #f9fafb;
+  background: #f6f7f9;
+  color: #111827;
 }
 
 .container {
-  max-width: 1400px;
+  max-width: 1500px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 20px;
 }
 
-.stats-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-  padding: 16px 20px;
-  background: #0f172a;
-  color: white;
-  border-radius: 14px;
+.summary-bar {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 1px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  border: 1px solid #d9dde3;
+  border-radius: 8px;
+  background: #d9dde3;
 }
 
-.stats-text {
-  font-size: 16px;
+.metric {
+  min-width: 0;
+  padding: 12px 14px;
+  background: #fff;
 }
 
-.stats-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+.metric span {
+  display: block;
+  margin-bottom: 4px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.metric strong {
+  font-size: 18px;
 }
 
 .toolbar {
-  display: flex;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) 150px 180px 190px auto;
+  gap: 10px;
   align-items: end;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-  padding: 16px;
+  margin-bottom: 14px;
+  padding: 12px;
   background: white;
-  border: 1px solid #ddd;
-  border-radius: 12px;
+  border: 1px solid #d9dde3;
+  border-radius: 8px;
 }
 
-.toolbar-group {
+.toolbar-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  min-width: 0;
+  gap: 5px;
+  font-size: 12px;
+  color: #667085;
 }
 
 .toolbar-input,
 .toolbar-select {
-  padding: 10px;
-  min-width: 240px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+  height: 36px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid #cfd5df;
+  border-radius: 6px;
+  background: #fff;
   font-size: 14px;
+  color: #111827;
 }
 
-.export-btn {
-  padding: 10px 14px;
+.export-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.export-actions button {
+  height: 36px;
+  padding: 0 12px;
   border: none;
-  border-radius: 8px;
-  cursor: pointer;
+  border-radius: 6px;
   background: #111827;
   color: white;
+  cursor: pointer;
 }
 
-.green-btn {
-  background: #059669;
-}
-
-.green-btn:hover {
-  background: #047857;
+.export-actions button:hover {
+  background: #273244;
 }
 
 .empty-state {
   padding: 18px;
   background: white;
-  border: 1px solid #ddd;
-  border-radius: 12px;
+  border: 1px solid #d9dde3;
+  border-radius: 8px;
+}
+
+@media (max-width: 900px) {
+  .summary-bar {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .export-actions {
+    justify-content: flex-start;
+  }
 }
 </style>

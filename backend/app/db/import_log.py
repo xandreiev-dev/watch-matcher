@@ -46,7 +46,21 @@ class ImportLogRecord:
 
 class WatchImportLogRepository:
     @classmethod
+    def ensure_table(cls) -> None:
+        try:
+            conn = get_db_connection()
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute(CREATE_WATCH_IMPORT_LOG_SQL)
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as exc:
+            logger.warning(f"Не удалось создать/проверить watch_import_log: {exc}")
+
+    @classmethod
     def was_imported(cls, file_hash: str, *, shop: str) -> bool:
+        cls.ensure_table()
         query = """
         SELECT id
         FROM watch_import_log
@@ -69,6 +83,7 @@ class WatchImportLogRepository:
 
     @classmethod
     def save(cls, record: ImportLogRecord) -> None:
+        cls.ensure_table()
         query = """
         INSERT INTO watch_import_log
         (shop, filename, file_date, file_size, file_hash, status, rows_total, rows_processed, rows_inserted, error_text)

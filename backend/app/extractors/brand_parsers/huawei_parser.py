@@ -143,6 +143,8 @@ class HuaweiParser:
             m = re.search(r"\bwatch\s+d\s*(\d+)\b", normalized)
             if m:
                 generation = m.group(1)
+            if re.search(r"\bpro\b", normalized):
+                found_variants.append("Pro")
 
         # 2. Watch Fit
         elif re.search(r"\bwatch\s+fit\b", normalized) or re.search(r"\bfit\b", normalized):
@@ -263,6 +265,12 @@ class HuaweiParser:
         candidates: list[str] = []
 
         if family == "D":
+            if generation and variant:
+                if size_mm:
+                    candidates.append(f"watch d{generation} {variant.lower()} {int(size_mm)}mm")
+                    candidates.append(f"watch d {generation} {variant.lower()} {int(size_mm)}mm")
+                candidates.append(f"watch d{generation} {variant.lower()}")
+                candidates.append(f"watch d {generation} {variant.lower()}")
             if generation:
                 if size_mm:
                     candidates.append(f"watch d{generation} {int(size_mm)}mm")
@@ -315,6 +323,10 @@ class HuaweiParser:
 
         elif family == "Watch":
             if generation and variant:
+                if "Ultimate" in variant:
+                    if size_mm:
+                        candidates.append(f"watch ultimate {generation} {int(size_mm)}mm")
+                    candidates.append(f"watch ultimate {generation}")
                 if size_mm:
                     candidates.append(f"watch {generation} {variant.lower()} {int(size_mm)}mm")
                 candidates.append(f"watch {generation} {variant.lower()}")

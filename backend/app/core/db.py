@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import atexit
+import os
 import threading
 
 import pymysql
@@ -26,6 +27,13 @@ logger = get_logger("db")
 
 tunnel: SSHTunnelForwarder | None = None
 _tunnel_lock = threading.Lock()
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
 
 
 def get_ssh_tunnel() -> SSHTunnelForwarder:
@@ -74,9 +82,9 @@ def get_db_connection():
         charset="utf8mb4",
         cursorclass=DictCursor,
         autocommit=True,
-        connect_timeout=10,
-        read_timeout=30,
-        write_timeout=30,
+        connect_timeout=_env_int("DB_CONNECT_TIMEOUT", 10),
+        read_timeout=_env_int("DB_READ_TIMEOUT", 180),
+        write_timeout=_env_int("DB_WRITE_TIMEOUT", 180),
     )
 
 
@@ -86,7 +94,6 @@ def _shutdown_tunnel():
     if tunnel is not None:
         try:
             tunnel.stop()
-            logger.info("SSH-туннель остановлен")
         except Exception:
             pass
         tunnel = None

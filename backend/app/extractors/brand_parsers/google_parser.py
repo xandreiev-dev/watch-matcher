@@ -34,6 +34,9 @@ class GoogleParser:
         if not text:
             return features
 
+        if cls.has_other_watch_brand(text):
+            return features
+
         cleaned = cls.cleanup_text(text)
 
         if cls.is_multi_model(cleaned):
@@ -111,11 +114,13 @@ class GoogleParser:
         generation = None
         variant = None
 
-        if re.search(r"\bpixel\s+watch\b", text):
+        if re.search(r"\bpixel\s+watch\b", text) or re.search(r"\bwatch\s*\d{1,2}\b", text):
             family = "Watch"
 
             # Pixel Watch 2 / 3 / 4
             m = re.search(r"\bpixel\s+watch\s*(\d{1,2})\b", text)
+            if not m:
+                m = re.search(r"\bwatch\s*(\d{1,2})\b", text)
             if m:
                 generation = m.group(1)
 
@@ -124,6 +129,15 @@ class GoogleParser:
             "generation": generation,
             "variant": variant,
         }
+
+    @classmethod
+    def has_other_watch_brand(cls, text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(amazfit|apple|garmin|huawei|honor|motorola|oneplus|oppo|samsung|vivo|xiaomi)\b",
+                text.lower(),
+            )
+        )
 
     @classmethod
     def build_model_candidates(

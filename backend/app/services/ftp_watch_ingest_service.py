@@ -4,6 +4,7 @@ import os
 import re
 import time
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from ftplib import FTP
@@ -62,9 +63,9 @@ class FtpIngestConfig:
             ftp_remote_dir=(
                 os.getenv("FTP_REMOTE_DIR")
                 or os.getenv("SMARTWATCH_FTP_REMOTE_DIR")
-                or "/Avito/watch"
+                or "avito/watch/"
             ).strip()
-            or "/Avito/watch",
+            or "avito/watch/",
             local_download_dir=Path(
                 os.getenv("FTP_LOCAL_DOWNLOAD_DIR")
                 or os.getenv("SMARTWATCH_LOCAL_DOWNLOAD_DIR")
@@ -92,6 +93,8 @@ def extract_date_from_filename(filename: str) -> date | None:
 
 def _file_type_from_name(filename: str) -> bool | None:
     value = filename.lower()
+    if "new_used_conflicts" in value or value.endswith("_conflicts.xlsx"):
+        return None
     if "_used_" in value or "_old_" in value or "used" in value or "old" in value:
         return False
     if "_new_" in value or "new" in value:
@@ -243,7 +246,7 @@ class FtpWatchIngestService:
         actual_date: date,
         is_new: bool,
         force_reimport: bool,
-    ) -> None:
+    ) -> bool:
         logger.info(
             f"[ФТП] Начата обработка файла={local_path.name} дата={actual_date} тип={'НОВЫЕ' if is_new else 'БУ'}"
             + (f" | принудительная_перезапись={force_reimport}" if force_reimport else "")
@@ -252,6 +255,13 @@ class FtpWatchIngestService:
         logger.info(
             f"[ФТП] Входной XLSX файл={local_path.name} строк={len(dataframe)} колонок={len(dataframe.columns)}"
         )
+        if dataframe.empty:
+            logger.warning(
+                f"[ФТП] Пропуск пустого XLSX файла={local_path.name}: строк=0. "
+                "Запись в БД не выполняю, следующий файл/источник продолжит обработку."
+            )
+            return False
+
         ExcelService.validate_columns(dataframe)
         processed_df = dataframe.fillna("").copy()
         models_catalog, variants_catalog = self._ensure_catalog()
@@ -259,6 +269,13 @@ class FtpWatchIngestService:
         for _, row in processed_df.iterrows():
             result.append(process_watch_row(row.to_dict(), models_catalog, variants_catalog))
         build_process_logs(result, is_new)
+        if not result:
+            logger.warning(
+                f"[ФТП] Пропуск файла={local_path.name}: после обработки нет строк результата. "
+                "Запись в БД не выполняю."
+            )
+            return False
+
         WatchDbWriterService.prepare_and_write_watch_data_to_db(
             df_res=pd.DataFrame(result),
             actual_date=actual_date,
@@ -268,6 +285,7 @@ class FtpWatchIngestService:
         logger.info(
             f"[ФТП] Запись в БД завершена файл={local_path.name} строк={len(result)} тип={'НОВЫЕ' if is_new else 'БУ'}"
         )
+        return True
 
     def run_once(self, *, force_reimport: bool | None = None) -> None:
         force = self.config.is_debug if force_reimport is None else force_reimport
@@ -317,13 +335,13 @@ class FtpWatchIngestService:
                 f"[ФТП] Скачивание {file_name} (mdtm={mdtm.isoformat()}) для типа={'НОВЫЕ' if is_new else 'БУ'}"
             )
             local_path = self._download_file(file_name)
-            self._process_file(
+            processed = self._process_file(
                 local_path,
                 actual_date=actual_date,
                 is_new=is_new,
                 force_reimport=force,
             )
-            if mark_today_reimport:
+            if mark_today_reimport and processed:
                 self._mark_today_reimport(
                     actual_date,
                     is_new,
@@ -332,7 +350,7 @@ class FtpWatchIngestService:
                     existing_price_count=existing_price_count,
                 )
 
-    def run_forever(self) -> None:
+    def run_forever(self, *, after_run_once: Callable[[], None] | None = None) -> None:
         if self.config.is_debug:
             logger.warning(
                 f"[ФТП] IS_DEBUG=истина: один проход без ожидания :{self.config.check_minute:02d}, "
@@ -340,6 +358,8 @@ class FtpWatchIngestService:
             )
             try:
                 self.run_once()
+                if after_run_once is not None:
+                    after_run_once()
             except Exception as exc:
                 logger.exception(f"[ФТП] Ошибка итерации: {exc}")
             return
@@ -356,5 +376,7 @@ class FtpWatchIngestService:
             time.sleep(max(0.0, float(wait_sec)))
             try:
                 self.run_once()
+                if after_run_once is not None:
+                    after_run_once()
             except Exception as exc:
                 logger.exception(f"[ФТП] Ошибка итерации: {exc}")

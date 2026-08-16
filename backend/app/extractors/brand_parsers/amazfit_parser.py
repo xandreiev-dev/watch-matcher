@@ -171,6 +171,9 @@ class AmazfitParser:
             if re.search(r"\bpro\b", text):
                 found_variants.append("Pro")
 
+            if re.search(r"\bmax\b", text):
+                found_variants.append("Max")
+
         # Cheetah / Cheetah Pro / Cheetah Square / Cheetah Round
         elif re.search(r"\bcheetah\b", text):
             family = "Cheetah"

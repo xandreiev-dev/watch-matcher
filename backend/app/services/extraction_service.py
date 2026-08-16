@@ -99,7 +99,14 @@ class ExtractionService:
         if not url:
             return None
 
-        match = re.search(r"(?:_|/)(\d{6,})(?:[/?#]|$)", str(url))
+        text = str(url)
+
+        # DNS stores article-like product ids in regular and analog product URLs.
+        dns_match = re.search(r"/product/(?:analog/)?([0-9a-f]{8,})(?:/|$)", text, re.IGNORECASE)
+        if dns_match:
+            return dns_match.group(1)
+
+        match = re.search(r"(?:_|/)(\d{6,})(?:[/?#]|$)", text)
         if match:
             return match.group(1)
 

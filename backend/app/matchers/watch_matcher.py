@@ -4,6 +4,28 @@ from app.schemas.watch_features import WatchFeatures
 
 
 class WatchMatcher:
+    # Эти слова меняют саму модель, поэтому короткий fallback не должен склеивать
+    # Watch 5 Active с обычным Watch 5 или Watch 6 Classic с обычным Watch 6.
+    PROTECTED_MODEL_TOKENS_BY_BRAND = {
+        "apple": {"series", "se", "ultra"},
+        "samsung": {"active", "classic", "fe", "fit", "pro", "ultra"},
+        "xiaomi": {"active", "lite", "mi_watch", "poco", "pro", "redmi"},
+        "huawei": {"buds", "d", "fit", "gt", "kids", "pro", "se", "ultimate"},
+        "honor": {"choice", "es", "fit", "gs", "magicwatch", "pro", "ultra"},
+        "oppo": {"free", "lite", "se", "x"},
+        "oneplus": {"lite", "nord", "r"},
+        "vivo": {"gt", "iqoo"},
+        "amazfit": {"active", "balance", "bip", "cheetah", "falcon", "gtr", "gts", "t_rex"},
+        "garmin": {
+            "approach", "crossover", "d2", "descent", "enduro", "epix",
+            "fenix", "forerunner", "instinct", "lily", "marq", "pro",
+            "quatix", "swim", "tactix", "venu",
+            "vivoactive", "vivomove", "vivosmart",
+        },
+        "google": {"pixel"},
+        "motorola": {"fit"},
+    }
+
     @classmethod
     def match(
         cls,
@@ -78,36 +100,174 @@ class WatchMatcher:
         if not brand_rows:
             return None
 
-        candidate_keys = set()
-        for candidate in features.model_candidates or []:
-            candidate_keys.update(cls.build_model_key_variants(candidate))
-
-        if not candidate_keys:
+        candidates = [candidate for candidate in features.model_candidates or [] if candidate]
+        if not candidates:
             return None
 
         exact_matches = []
 
-        for row in brand_rows:
-            model_text = row.get("normalized_name") or row.get("model_name") or row.get("name")
-            model_keys = cls.build_model_key_variants(model_text)
+        for candidate in candidates:
+            candidate_keys = cls.build_model_key_variants(candidate)
+            if not candidate_keys:
+                continue
 
-            if candidate_keys & model_keys:
-                exact_matches.append(row)
+            for row in brand_rows:
+                model_text = row.get("normalized_name") or row.get("model_name") or row.get("name")
+                model_keys = cls.build_model_key_variants(model_text)
 
-        if len(exact_matches) == 1:
-            return exact_matches[0]
+                if candidate_keys & model_keys and cls.is_semantically_safe_model_match(features, candidate, row):
+                    exact_matches.append((row, candidate))
+
+        unique_matches: dict[str, tuple[dict, str]] = {}
+        for row, candidate in exact_matches:
+            key = str(row.get("id") or row.get("model_name") or row.get("normalized_name"))
+            current = unique_matches.get(key)
+            if current is None or len(cls.normalize_model_key(candidate)) > len(cls.normalize_model_key(current[1])):
+                unique_matches[key] = (row, candidate)
+
+        exact_rows = [row for row, _candidate in unique_matches.values()]
+
+        if len(exact_rows) == 1:
+            return exact_rows[0]
 
         # если совпадений несколько — берем самую длинную нормализованную модель
-        if len(exact_matches) > 1:
-            exact_matches.sort(
+        if len(exact_rows) > 1:
+            exact_rows.sort(
                 key=lambda x: len(cls.normalize_model_key(
                     x.get("normalized_name") or x.get("model_name") or x.get("name")
                 )),
                 reverse=True
             )
-            return exact_matches[0]
+            return exact_rows[0]
 
         return None
+
+    @classmethod
+    def is_semantically_safe_model_match(
+        cls,
+        features: WatchFeatures,
+        candidate: str | None,
+        model_row: dict,
+    ) -> bool:
+        brand = (features.brand or "").strip().lower()
+        protected_tokens = cls.PROTECTED_MODEL_TOKENS_BY_BRAND.get(brand, set())
+        if not protected_tokens:
+            return True
+
+        model_text = model_row.get("normalized_name") or model_row.get("model_name") or model_row.get("name")
+        source_text = " ".join(
+            str(value)
+            for value in [
+                features.product_name,
+                features.normalized_title,
+                features.family,
+                features.generation,
+                features.variant,
+                features.extracted_variant_name,
+                candidate,
+            ]
+            if value
+        )
+
+        source_tokens = cls.extract_protected_model_tokens(source_text, brand) & protected_tokens
+        if brand == "apple" and str(features.family or "").strip().lower() == "se":
+            source_tokens.discard("series")
+        if not source_tokens:
+            return cls.generation_is_compatible(features, model_text)
+
+        model_tokens = cls.extract_protected_model_tokens(model_text, brand) & protected_tokens
+        return source_tokens.issubset(model_tokens) and cls.generation_is_compatible(features, model_text)
+
+    @classmethod
+    def generation_is_compatible(cls, features: WatchFeatures, model_text: str | None) -> bool:
+        generation = str(features.generation or "").strip()
+        if not generation:
+            return True
+
+        model_key = cls.normalize_model_key(model_text)
+        if not model_key:
+            return False
+
+        gen_key = cls.normalize_model_key(generation)
+        if not gen_key:
+            return True
+
+        model_compact = re.sub(r"[^a-z0-9]+", "", model_key)
+        gen_compact = re.sub(r"[^a-z0-9]+", "", gen_key)
+
+        if not gen_compact:
+            return True
+
+        if gen_key in model_key.split():
+            return True
+
+        if len(gen_compact) == 1 and gen_compact.isalpha():
+            return bool(re.search(rf"\b{re.escape(gen_compact)}\b", model_key))
+
+        if gen_compact.isdigit():
+            return bool(re.search(rf"(?<!\d){re.escape(gen_compact)}(?!\d)", model_compact))
+
+        return bool(re.search(rf"(?<![a-z0-9]){re.escape(gen_compact)}(?![a-z0-9])", model_compact)) or gen_compact in model_compact
+
+    @classmethod
+    def extract_protected_model_tokens(cls, text: str | None, brand: str | None = None) -> set[str]:
+        normalized = cls.normalize_model_key(text)
+        if not normalized:
+            return set()
+
+        compact = re.sub(r"[^a-z0-9]+", "", normalized)
+        tokens: set[str] = set()
+
+        def has_word(word: str) -> bool:
+            return bool(re.search(rf"\b{re.escape(word)}\b", normalized))
+
+        def has_small_token(word: str) -> bool:
+            return has_word(word) or bool(re.search(rf"(?<=\d){re.escape(word)}\b", compact))
+
+        long_tokens = {
+            "active", "amoled", "approach", "balance", "bip", "buds", "cheetah",
+            "choice", "classic", "crossover", "descent", "enduro", "epix",
+            "falcon", "fenix", "fit", "forerunner", "free", "gtr", "gts",
+            "instinct", "iqoo", "kids", "lily", "lite", "magicwatch", "marq",
+            "music", "nord", "pixel", "poco", "quatix", "redmi", "sapphire",
+            "series", "solar", "swim", "tactix", "ultra", "ultimate", "venu",
+            "vivoactive", "vivomove", "vivosmart",
+        }
+        for token in long_tokens:
+            if has_word(token) or token in compact:
+                tokens.add(token)
+
+        if re.search(r"\bt\s*rex\b", normalized) or "trex" in compact:
+            tokens.add("t_rex")
+
+        if re.search(r"\bd\s*2\b", normalized) or compact.startswith("d2"):
+            tokens.add("d2")
+
+        if re.search(r"\bmi\s+watch\b", normalized) or compact.startswith("miwatch"):
+            tokens.add("mi_watch")
+
+        if has_small_token("pro"):
+            tokens.add("pro")
+
+        if has_small_token("se") or re.search(r"watchse(?:\d|$)", compact):
+            tokens.add("se")
+
+        if has_small_token("fe") or "watchfe" in compact:
+            tokens.add("fe")
+
+        if has_word("gt") or re.search(r"\bwatch\s+gt\b", normalized) or "watchgt" in compact:
+            tokens.add("gt")
+
+        if has_word("gs") or re.search(r"\bwatch\s+gs\b", normalized) or "watchgs" in compact:
+            tokens.add("gs")
+
+        if re.search(r"\bwatch\s+d\s*\d*\b", normalized) or re.search(r"\bd\s*\d+\b", normalized) or "watchd" in compact:
+            tokens.add("d")
+
+        if re.search(r"\bwatch\s+\d+r\b", normalized) or re.search(r"watch\d+r\b", compact):
+            tokens.add("r")
+
+        return tokens
 
     @classmethod
     def find_variant(
@@ -140,7 +300,7 @@ class WatchMatcher:
                 strict_named = cls.find_by_variant_name(features, sized_rows)
                 if strict_named:
                     return strict_named
-                return None
+                return cls.select_best_variant(features, sized_rows)
 
         # 2. exact by variant_name
         strict_named = cls.find_by_variant_name(features, rows)
@@ -158,6 +318,61 @@ class WatchMatcher:
                 return null_size_rows[0]
 
         return None
+
+    @classmethod
+    def select_best_variant(cls, features: WatchFeatures, rows: list[dict]) -> dict | None:
+        if not rows:
+            return None
+
+        ranked = sorted(
+            rows,
+            key=lambda row: (
+                int(row.get("quality_score") or 0)
+                + cls.connectivity_match_score(features.extracted_connectivity, row.get("connectivity_type")) * 20
+                + cls.material_match_score(features.extracted_material, row.get("case_material")) * 5,
+                int(row.get("is_canonical") or 0),
+                int(row.get("id") or 0),
+            ),
+            reverse=True,
+        )
+        return ranked[0]
+
+    @classmethod
+    def connectivity_match_score(cls, wanted: str | None, actual: str | None) -> int:
+        wanted_norm = cls.normalize_variant_name(wanted)
+        actual_norm = cls.normalize_variant_name(actual)
+
+        if not wanted_norm or not actual_norm:
+            return 0
+
+        if wanted_norm == actual_norm:
+            return 4
+
+        if wanted_norm in {"lte", "cellular"}:
+            return 3 if "lte" in actual_norm or "cellular" in actual_norm else 0
+
+        if wanted_norm == "gps":
+            if "lte" in actual_norm or "cellular" in actual_norm:
+                return 1
+            return 3 if "gps" in actual_norm else 0
+
+        if wanted_norm in {"bluetooth", "wifi"}:
+            return 3 if wanted_norm in actual_norm else 0
+
+        return 1 if wanted_norm in actual_norm else 0
+
+    @classmethod
+    def material_match_score(cls, wanted: str | None, actual: str | None) -> int:
+        wanted_norm = cls.normalize_variant_name(wanted)
+        actual_norm = cls.normalize_variant_name(actual)
+
+        if not wanted_norm or not actual_norm:
+            return 0
+
+        if wanted_norm == actual_norm:
+            return 3
+
+        return 1 if wanted_norm in actual_norm or actual_norm in wanted_norm else 0
 
     @classmethod
     def find_by_variant_name(cls, features: WatchFeatures, rows: list[dict]) -> dict | None:
@@ -236,6 +451,11 @@ class WatchMatcher:
             ("gen2", "gen 2"),
             ("gen 1", "gen1"),
             ("gen1", "gen 1"),
+            ("galaxywatch", "galaxy watch"),
+            ("redmiwatch", "redmi watch"),
+            ("miwatch", "mi watch"),
+            ("pocowatch", "poco watch"),
+            ("applewatch", "apple watch"),
         ]
 
         current = list(variants)
@@ -292,5 +512,10 @@ class WatchMatcher:
             step6 = re.sub(r"\b(\d+)\s+([a-z])\b", r"\1\2", value)
             step6 = re.sub(r"\s+", " ", step6).strip()
             expanded.add(step6)
+
+            # watch5active / watch6classic -> watch 5 active / watch 6 classic
+            step7 = re.sub(r"(?<=[a-z])(?=\d)|(?<=\d)(?=[a-z])", " ", value)
+            step7 = re.sub(r"\s+", " ", step7).strip()
+            expanded.add(step7)
 
         return {v.strip() for v in expanded if v.strip()}

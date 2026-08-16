@@ -196,13 +196,19 @@ class XiaomiParser:
             if re.search(r"\bsport\b", text):
                 found_variants.append("Sport")
 
-        # Xiaomi Watch 2 / Watch 2 Pro / Watch 5
+        # Xiaomi Watch 2 / Watch 2 Pro / Watch 5 / Watch 5 Active / Watch 5 Lite
         elif re.search(r"\bwatch\s*\d+\b", text):
             family = "Watch"
 
             m = re.search(r"\bwatch\s*(\d+)\b", text)
             if m:
                 generation = m.group(1)
+
+            if re.search(r"\bactive\b", text):
+                found_variants.append("Active")
+
+            if re.search(r"\blite\b", text):
+                found_variants.append("Lite")
 
             if re.search(r"\bpro\b", text):
                 found_variants.append("Pro")

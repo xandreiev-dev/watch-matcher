@@ -145,8 +145,17 @@ class ModelCandidateBuilder:
     def build_huawei_candidates(cls, text: str) -> list[str]:
         candidates: list[str] = []
 
-        if m := re.search(r"\bwatch\s+d\s*(\d+)\b", text):
-            candidates.append(f"watch d{m.group(1)}")
+        if m := re.search(r"\bwatch\s+ultimate\s*(\d+)?\b", text):
+            if m.group(1):
+                candidates.append(f"watch ultimate {m.group(1)}")
+            candidates.append("watch ultimate")
+
+        if m := re.search(r"\bwatch\s+d\s*(\d+)\s*(pro)?\b", text):
+            number = m.group(1)
+            pro = m.group(2)
+            if pro:
+                candidates.append(f"watch d{number} pro")
+            candidates.append(f"watch d{number}")
         elif re.search(r"\bwatch\s+d\b", text):
             candidates.append("watch d")
 
@@ -238,6 +247,13 @@ class ModelCandidateBuilder:
     @classmethod
     def build_garmin_candidates(cls, text: str) -> list[str]:
         candidates: list[str] = []
+
+        if m := re.search(r"\b(fenix\s+\d+\w?)\s+.*?\bpro\b", text):
+            candidates.append(f"{m.group(1)} pro")
+
+        if re.search(r"\bepix\b", text) and re.search(r"\bpro\b", text) and re.search(r"\bgen\s*2\b", text):
+            candidates.append("epix pro gen 2")
+            candidates.append("epix pro")
 
         patterns = [
             r"\b(fenix\s+\d+\w?)\b",
@@ -358,6 +374,8 @@ class ModelCandidateBuilder:
             r"\b(watch\s+s3)\b",
             r"\b(watch\s+s4\s+sport)\b",
             r"\b(watch\s+s4)\b",
+            r"\b(watch\s+\d+\s+active)\b",
+            r"\b(watch\s+\d+\s+lite)\b",
             r"\b(watch\s+\d+\s+pro)\b",
             r"\b(watch\s+\d+)\b",
         ]
@@ -468,7 +486,9 @@ class ModelCandidateBuilder:
             r"\b(watch\s+gs\s+\d+)\b",
             r"\b(watch\s+fit)\b",
             r"\b(watch\s+es)\b",
+            r"\b(watch\s+x\s*\d+i)\b",
             r"\b(watch\s+x\d+i)\b",
+            r"\b(watch\s+x\s*\d+)\b",
             r"\b(watch\s+x\d+)\b",
             r"\b(watch\s+\d+\s+ultra)\b",
             r"\b(watch\s+\d+\s+pro)\b",

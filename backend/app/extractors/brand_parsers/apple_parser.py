@@ -134,7 +134,7 @@ class AppleParser:
         if re.search(r"\bultra\b", text):
             return "Ultra"
 
-        if re.search(r"\bse\b", text):
+        if re.search(r"\bse\b", text) or re.search(r"\bse\s*[23]\b", text):
             return "SE"
 
         if re.search(r"\bseries\b", text):
@@ -162,8 +162,17 @@ class AppleParser:
 
         if family == "SE":
             match = re.search(r"\bse\s*(\d{1,2})\b", text)
-            if match:
+            if match and match.group(1) in {"2", "3"}:
                 return match.group(1)
+
+            gen_match = re.search(r"\bse\b.*\bgen\s*(\d{1,2})\b", text)
+            if gen_match:
+                return gen_match.group(1)
+
+            year_match = re.search(r"\bse\b.*\b2024\b", text)
+            if year_match:
+                return "2"
+
             return None
 
         if family == "Series":

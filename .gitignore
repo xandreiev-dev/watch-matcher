@@ -28,6 +28,7 @@ Thumbs.db
 # env files
 .env
 .env.*
+!.env.example
 
 sample_data/
 
@@ -36,4 +37,5 @@ sample_data/
 *.xls
 .~lock.*
 backend/output/
+backend/input/
 tmp/

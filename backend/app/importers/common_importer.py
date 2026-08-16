@@ -17,6 +17,7 @@ from app.importers.file_registry import (
     extract_date_from_filename,
     file_matches_source,
     infer_is_new_from_filename,
+    is_audit_conflict_file,
 )
 from app.importers.ftp_client import FtpFileInfo, WatchFtpClient, WatchFtpConfig
 from app.services.excel_service import ExcelService
@@ -71,6 +72,8 @@ def run_matcher_pipeline(
 ) -> MatcherPipelineResult:
     path = Path(input_file)
     normalized_source = source.strip().lower()
+    if normalized_source == "avito" and is_audit_conflict_file(path.name):
+        raise ValueError(f"Audit/conflict XLSX is not importable as product data: {path.name}")
     shop_id = SHOP_ID_BY_SOURCE[normalized_source]
     resolved_date = actual_date or extract_date_from_filename(path.name) or date.today()
     resolved_is_new = infer_is_new_from_filename(path.name) if is_new is None else is_new
@@ -98,29 +101,48 @@ def run_matcher_pipeline(
     result_df = pd.DataFrame(rows)
     WatchDbWriterService.validate_input_columns(result_df)
     ready_df = WatchDbWriterService.prepare_matched_rows(result_df)
+    ready_df = WatchDbWriterService.add_avito_row_state(
+        ready_df,
+        shop_id=shop_id,
+        batch_is_new=resolved_is_new,
+    )
+    ready_df = WatchDbWriterService.resolve_avito_duplicate_conflicts(
+        ready_df,
+        shop_id=shop_id,
+    )
     ready_ids = set(ready_df.get("_import_row_id", pd.Series(dtype=int)).tolist())
     failed_df = result_df[~result_df["_import_row_id"].isin(ready_ids)].copy()
 
-    output_file = WatchPreviewExporter.export(
-        rows,
-        is_new=resolved_is_new,
-        source=normalized_source,
-        shop_id=shop_id,
-        output_file=_build_output_file_path(
+    output_file = ""
+    ready_file = ""
+    failed_file = ""
+    try:
+        output_file = WatchPreviewExporter.export(
+            rows,
+            is_new=resolved_is_new,
+            source=normalized_source,
+            shop_id=shop_id,
+            output_file=_build_output_file_path(
+                source=normalized_source,
+                actual_date=resolved_date,
+                is_new=resolved_is_new,
+            ),
+        )
+
+        ready_file, failed_file = _write_debug_files(
+            ready_df=ready_df,
+            failed_df=failed_df,
             source=normalized_source,
             actual_date=resolved_date,
             is_new=resolved_is_new,
-        ),
-    )
-
-    ready_file, failed_file = _write_debug_files(
-        ready_df=ready_df,
-        failed_df=failed_df,
-        source=normalized_source,
-        actual_date=resolved_date,
-        is_new=resolved_is_new,
-        debug_dir=debug_dir,
-    )
+            debug_dir=debug_dir,
+        )
+    except OSError as exc:
+        if dry_run:
+            raise
+        logger.warning(
+            f"Не удалось сохранить debug/export XLSX, продолжаю запись в БД: {exc}"
+        )
 
     if not dry_run and not ready_df.empty:
         WatchDbWriterService.prepare_and_write_watch_data_to_db(
@@ -152,6 +174,8 @@ def process_all_watch_data(*, dry_run: bool = False, force: bool = False) -> lis
     summaries: list[ImportRunSummary] = []
     summaries.extend(process_shop_watch_data("avito", dry_run=dry_run, force=force))
     summaries.extend(process_shop_watch_data("ozon", dry_run=dry_run, force=force))
+    summaries.extend(process_shop_watch_data("dns", dry_run=dry_run, force=force))
+    summaries.extend(process_shop_watch_data("wb", dry_run=dry_run, force=force))
     return summaries
 
 
@@ -273,6 +297,17 @@ def _process_ftp_file(
 
 
 def _pick_files_for_import(source: str, files: list[FtpFileInfo]) -> list[FtpFileInfo]:
+    audit_files = [
+        file_info.filename
+        for file_info in files
+        if source == "avito" and is_audit_conflict_file(file_info.filename)
+    ]
+    if audit_files:
+        logger.warning(
+            f"[IMPORT] skip Avito audit/conflict files: {', '.join(audit_files[:5])}"
+            + (f", ... +{len(audit_files) - 5}" if len(audit_files) > 5 else "")
+        )
+
     matched = [
         file_info
         for file_info in files

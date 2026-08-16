@@ -2,9 +2,15 @@ from io import BytesIO
 import requests
 import pandas as pd
 
-from app.core.constants import REQUIRED_COLUMNS, PREVIEW_ROWS_COUNT
+from app.core.constants import PREVIEW_ROWS_COUNT
 
 class ExcelService:
+    REQUIRED_COLUMN_GROUPS = [
+        ("Название", "product_name", "title", "title / product name"),
+        ("Цена", "price", "Discount Price", "Price"),
+        ("URL", "product_url", "url"),
+    ]
+
     @staticmethod
     async def read_excel_file(file) -> pd.DataFrame:
         file_bytes = await file.read()
@@ -12,9 +18,14 @@ class ExcelService:
     
     @staticmethod
     def validate_columns(dataframe: pd.DataFrame) -> None:
-        missing_columns = [col for col in REQUIRED_COLUMNS if col not in dataframe.columns]
-        if missing_columns:
-            raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
+        columns = set(dataframe.columns)
+        missing_groups = [
+            "/".join(group)
+            for group in ExcelService.REQUIRED_COLUMN_GROUPS
+            if not any(column in columns for column in group)
+        ]
+        if missing_groups:
+            raise ValueError(f"Missing required columns: {', '.join(missing_groups)}")
         
     @staticmethod
     def build_preview(dataframe: pd.DataFrame) -> list[dict]:

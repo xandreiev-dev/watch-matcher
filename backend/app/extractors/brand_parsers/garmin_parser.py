@@ -125,6 +125,11 @@ class GarminParser:
         cleaned = cleaned.replace("(", " ")
         cleaned = cleaned.replace(")", " ")
 
+        for family in cls.FAMILIES:
+            if family == "d2":
+                continue
+            cleaned = re.sub(rf"\b{re.escape(family)}(?=\d)", f"{family} ", cleaned)
+
         for noise in cls.NOISE_WORDS:
             cleaned = re.sub(rf"\b{re.escape(noise)}\b", " ", cleaned)
 
@@ -373,6 +378,8 @@ class GarminParser:
             else:
                 if generation and variant:
                     candidates.append(f"fenix {generation.lower()} {variant.lower()}")
+                    if re.search(r"\bpro\b", variant, re.IGNORECASE):
+                        candidates.append(f"fenix {generation.lower()} pro")
                 if generation:
                     candidates.append(f"fenix {generation.lower()}")
                 if variant and not generation:
@@ -383,9 +390,14 @@ class GarminParser:
             if generation == "Gen 2":
                 if variant:
                     candidates.append(f"epix gen 2 {variant.lower()}")
+                    if re.search(r"\bpro\b", variant, re.IGNORECASE):
+                        candidates.append("epix pro gen 2")
+                        candidates.append("epix pro")
                 candidates.append("epix gen 2")
             if variant and generation != "Gen 2":
                 candidates.append(f"epix {variant.lower()}")
+                if re.search(r"\bpro\b", variant, re.IGNORECASE):
+                    candidates.append("epix pro")
             candidates.append("epix")
 
         elif family == "instinct":
@@ -400,6 +412,8 @@ class GarminParser:
                     candidates.append(f"instinct {generation.lower()} {variant.lower()}")
                 if generation:
                     candidates.append(f"instinct {generation.lower()}")
+                    if generation.lower() == "2x":
+                        candidates.append("instinct 2x solar")
             if variant and generation not in {"Crossover", "E"} and not generation:
                 candidates.append(f"instinct {variant.lower()}")
             candidates.append("instinct")

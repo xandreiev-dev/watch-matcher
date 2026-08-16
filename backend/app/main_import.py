@@ -7,8 +7,8 @@ from app.core.logging_config import setup_logging
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Import Avito/Ozon smartwatch XLSX files")
-    parser.add_argument("--shop", choices=["avito", "ozon", "all"], required=True)
+    parser = argparse.ArgumentParser(description="Import Avito/Ozon/DNS smartwatch XLSX files")
+    parser.add_argument("--shop", choices=["avito", "ozon", "dns", "all"], required=True)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
@@ -19,6 +19,7 @@ def main() -> None:
     from app.importers import (
         process_all_watch_data,
         process_avito_watch_data,
+        process_dns_watch_data,
         process_ozon_watch_data,
     )
 
@@ -26,6 +27,8 @@ def main() -> None:
         process_avito_watch_data(dry_run=args.dry_run, force=args.force)
     elif args.shop == "ozon":
         process_ozon_watch_data(dry_run=args.dry_run, force=args.force)
+    elif args.shop == "dns":
+        process_dns_watch_data(dry_run=args.dry_run, force=args.force)
     else:
         process_all_watch_data(dry_run=args.dry_run, force=args.force)
 

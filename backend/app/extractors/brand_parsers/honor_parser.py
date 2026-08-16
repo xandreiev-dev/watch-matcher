@@ -159,11 +159,12 @@ class HonorParser:
             family = "ES"
 
         # Watch X5 / Watch X5i
-        elif re.search(r"\bwatch\s+x\b", text) or re.search(r"\bwatch\s+x5i\b", text):
+        elif re.search(r"\bwatch\s+x\b", text) or re.search(r"\bwatch\s+x\s*\d+i?\b", text):
             family = "X"
 
-            if re.search(r"\bx5i\b", text):
-                generation = "5i"
+            m_i = re.search(r"\bwatch\s+x\s*(\d+i)\b", text)
+            if m_i:
+                generation = m_i.group(1)
             else:
                 m = re.search(r"\bwatch\s+x\s*(\d+)\b", text)
                 if m:

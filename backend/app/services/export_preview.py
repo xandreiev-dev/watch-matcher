@@ -7,6 +7,8 @@ import pandas as pd
 SHOP_ID_BY_SOURCE = {
     "avito": 2,
     "ozon": 1,
+    "wb": 3,
+    "dns": 6,
 }
 
 
@@ -30,6 +32,7 @@ class WatchPreviewExporter:
 
         for row in rows:
             model_display = cls._build_display_model(row)
+            row_is_new = cls._resolve_export_is_new(row, is_new)
 
             prepared_row = {
                 "Название": row.get("Название"),
@@ -60,7 +63,10 @@ class WatchPreviewExporter:
                 "price": row.get("price"),
                 "currency": "RUB",
                 "actual_date": today,
-                "is_new": 1 if is_new else 0,
+                "is_new": 1 if row_is_new else 0,
+                "row_is_new": row.get("row_is_new"),
+                "avito_condition": row.get("avito_condition"),
+                "condition_source": row.get("condition_source"),
                 "match_status": row.get("match_status"),
                 "matched_variant_id": row.get("matched_variant_id"),
                 "matched_variant_name": row.get("matched_variant_name"),
@@ -73,8 +79,8 @@ class WatchPreviewExporter:
                 "display_model": model_display,
             }
 
-            # Ozon-колонки держим отдельно, чтобы не менять привычный Avito export.
-            if normalized_source == "ozon":
+            # Marketplace-поля держим отдельно, чтобы не менять привычный Avito export.
+            if normalized_source != "avito":
                 prepared_row.update(
                     {
                         "source": row.get("source") or normalized_source,
@@ -116,6 +122,24 @@ class WatchPreviewExporter:
             parts.append(str(row["variant"]))
 
         return " ".join(parts) if parts else None
+
+    @staticmethod
+    def _resolve_export_is_new(row: dict, fallback: bool) -> bool:
+        value = row.get("row_is_new")
+        if value is None:
+            value = row.get("is_new")
+        if value is None:
+            return fallback
+
+        text = str(value).strip().lower()
+        if text.endswith(".0"):
+            text = text[:-2]
+        if text in {"1", "true", "yes", "y", "new"}:
+            return True
+        if text in {"0", "false", "no", "n", "old", "used"}:
+            return False
+
+        return fallback
 
     @classmethod
     def _get_review_value(cls, row: dict):
