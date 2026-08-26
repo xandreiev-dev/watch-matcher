@@ -114,6 +114,14 @@ class GoogleParser:
         generation = None
         variant = None
 
+        if re.search(r"\bfitbit\s+air\b", text):
+            family = "Fitbit Air"
+            return {
+                "family": family,
+                "generation": generation,
+                "variant": variant,
+            }
+
         if re.search(r"\bpixel\s+watch\b", text) or re.search(r"\bwatch\s*\d{1,2}\b", text):
             family = "Watch"
 
@@ -151,6 +159,9 @@ class GoogleParser:
 
         candidates: list[str] = []
 
+        if family == "Fitbit Air":
+            return ["fitbit air"]
+
         # Pixel Watch (1 поколение без цифры)
         if not generation:
             candidates.append("pixel watch")
@@ -180,6 +191,9 @@ class GoogleParser:
         size_mm: int | None,
     ) -> str | None:
         if not family:
+            return None
+
+        if family == "Fitbit Air":
             return None
 
         parts: list[str] = ["Pixel Watch"]

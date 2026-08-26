@@ -186,6 +186,7 @@ def test_xiaomi_parser_builds_active_and_lite_candidates():
         (AmazfitParser, "Amazfit", "Amazfit T-Rex 3 Pro", ["t rex 3 pro", "t-rex 3 pro"], "3", "Pro"),
         (GoogleParser, "Google", "Google Pixel Watch 2 41mm", ["pixel watch 2"], "2", None),
         (GoogleParser, "Google", "Google Watch 4 Wi-Fi 41mm", ["pixel watch 4"], "4", None),
+        (GoogleParser, "Google", "Google Fitbit Air", ["fitbit air"], None, None),
         (HonorParser, "Honor", "Honor Choice Watch 2 Pro", ["choice watch 2 pro"], "2", "Pro"),
         (HonorParser, "Honor", "Honor Watch X5i", ["watch x5i"], "5i", None),
         (MotorolaParser, "Motorola", "Moto Watch Fit", ["moto watch fit"], None, "Fit"),
@@ -282,6 +283,64 @@ def test_google_parser_ignores_other_brands_using_wear_os_by_google():
         WatchFeatures(
             product_name="OnePlus Watch 3 Wear OS by Google",
             normalized_title="oneplus watch 3 wear os by google",
+            brand="Google",
+        )
+    )
+
+    assert parsed.model_candidates == []
+
+
+def test_fitbit_air_preprocess_uses_google_brand_and_allows_fitness_band_category():
+    row = {
+        "Название": "Фитнес-браслет Google Fitbit Air Black",
+        "URL": "https://www.ozon.ru/product/google-fitbit-air-black-123",
+        "Цена": 12999,
+    }
+
+    preprocessed = WatchPreprocessService.preprocess_row(row, source="ozon")
+
+    assert preprocessed.brand == "Google"
+    assert preprocessed.is_accessory is False
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Ремешок для Google Fitbit Air",
+        "Браслет для Google Fitbit Air",
+        "Зарядка Fitbit Air",
+        "Protective case for Fitbit Air",
+    ],
+)
+def test_fitbit_air_accessories_stay_accessory(title: str):
+    assert WatchPreprocessService.is_accessory(title, source="ozon") is True
+
+
+def test_fitbit_air_matches_without_size_variant():
+    parsed = GoogleParser.parse(
+        WatchFeatures(
+            product_name="Google Fitbit Air",
+            normalized_title="google fitbit air",
+            brand="Google",
+        )
+    )
+
+    result = WatchMatcher.match(
+        parsed,
+        [model(720, "Google", "Fitbit Air")],
+        [variant(718, 720, "", None, "bluetooth")],
+    )
+
+    assert result.match_status == "matched"
+    assert result.matched_model_name == "Fitbit Air"
+    assert result.matched_variant_id == 718
+
+
+def test_google_parser_does_not_match_other_fitbit_models():
+    parsed = GoogleParser.parse(
+        WatchFeatures(
+            product_name="Fitbit Charge 6",
+            normalized_title="fitbit charge 6",
             brand="Google",
         )
     )

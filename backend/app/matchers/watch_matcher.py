@@ -22,7 +22,7 @@ class WatchMatcher:
             "quatix", "swim", "tactix", "venu",
             "vivoactive", "vivomove", "vivosmart",
         },
-        "google": {"pixel"},
+        "google": {"fitbit", "pixel"},
         "motorola": {"fit"},
     }
 
@@ -229,7 +229,7 @@ class WatchMatcher:
             "choice", "classic", "crossover", "descent", "enduro", "epix",
             "falcon", "fenix", "fit", "forerunner", "free", "gtr", "gts",
             "instinct", "iqoo", "kids", "lily", "lite", "magicwatch", "marq",
-            "music", "nord", "pixel", "poco", "quatix", "redmi", "sapphire",
+            "fitbit", "music", "nord", "pixel", "poco", "quatix", "redmi", "sapphire",
             "series", "solar", "swim", "tactix", "ultra", "ultimate", "venu",
             "vivoactive", "vivomove", "vivosmart",
         }

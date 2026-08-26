@@ -10,6 +10,15 @@ ACCESSORY_KEYWORDS = {
     "ремешок", "ремень", "браслет", "strap", "band", "loop", "case", "glass", "стекло", "чехол"
 }
 
+FITBIT_AIR_PATTERN = r"\b(?:google\s+)?fitbit\s+air\b"
+FITBIT_AIR_ACCESSORY_PATTERNS = [
+    r"\b(?:ремешок|ремень|strap|band|loop|петля|case|чехол)\b",
+    r"\b(?:защитн\w*\s+)?(?:glass|стекло)\b",
+    r"\b(?:зарядка|зарядн\w*|charger|dock|кабель)\b",
+]
+FITBIT_AIR_FITNESS_BAND_PATTERN = r"\bфитнес[\s-]+браслет\b"
+FITBIT_AIR_BRACELET_PATTERN = r"\bбраслет\b"
+
 OZON_SOFT_ACCESSORY_KEYWORDS = {"strap", "band", "loop", "case", "ремешок", "ремень", "браслет"}
 STRONG_ACCESSORY_KEYWORDS = {"glass", "стекло", "чехол", "кабель", "зарядка", "charger", "dock"}
 OZON_EXPLICIT_ACCESSORY_PATTERNS = [
@@ -75,7 +84,7 @@ COMMON_BRANDS = [
     ("Xiaomi", ["xiaomi", "redmi", "poco"]),
     ("Oppo", ["oppo"]),
     ("Honor", ["honor"]),
-    ("Google", ["google", "pixel"]),
+    ("Google", ["google", "pixel", "fitbit"]),
     ("OnePlus", ["oneplus"]),
     ("Motorola", ["motorola", "moto"]),
     ("Vivo", ["vivo", "iqoo"]),
@@ -159,6 +168,9 @@ class WatchPreprocessService:
     def is_accessory(cls, title: str, source: str = "avito") -> bool:
         normalized_title = WatchTitleNormalizer.normalize(title)
 
+        if cls.is_fitbit_air_title(normalized_title):
+            return cls.is_fitbit_air_accessory(normalized_title)
+
         if source not in {"ozon", "dns", "wb"}:
             return any(word in normalized_title for word in ACCESSORY_KEYWORDS)
 
@@ -174,6 +186,20 @@ class WatchPreprocessService:
             return False
 
         return has_explicit_accessory or has_soft_keyword or has_strong_keyword
+
+    @classmethod
+    def is_fitbit_air_title(cls, normalized_title: str) -> bool:
+        return bool(re.search(FITBIT_AIR_PATTERN, normalized_title))
+
+    @classmethod
+    def is_fitbit_air_accessory(cls, normalized_title: str) -> bool:
+        if any(re.search(pattern, normalized_title) for pattern in FITBIT_AIR_ACCESSORY_PATTERNS):
+            return True
+
+        if re.search(FITBIT_AIR_FITNESS_BAND_PATTERN, normalized_title):
+            return False
+
+        return bool(re.search(FITBIT_AIR_BRACELET_PATTERN, normalized_title))
 
     @classmethod
     def extract_brand_once(cls, title: str) -> str:
@@ -238,7 +264,7 @@ class WatchPreprocessService:
             "Xiaomi": ["xiaomi", "redmi-watch", "redmi_watch", "redmi", "poco"],
             "Oppo": ["oppo"],
             "Honor": ["honor"],
-            "Google": ["google", "pixel-watch", "pixel_watch", "pixel"],
+            "Google": ["google", "pixel-watch", "pixel_watch", "pixel", "fitbit"],
             "OnePlus": ["oneplus", "one-plus"],
             "Amazfit": ["amazfit"],
             "Motorola": ["motorola", "moto-watch", "moto_watch", "moto"],
